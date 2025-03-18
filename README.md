@@ -151,7 +151,8 @@ Como se puede observar, la puntuación no es muy alta, supongo que se deberá a 
     ```
 3. Instala las dependencias:
     ```bash
-    pip install -r requirements.txt
+    poetry shell
+    poetry install
     ```
 
 ## Uso
