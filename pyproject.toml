@@ -20,7 +20,11 @@ dependencies = [
     "scikit-learn (>=1.6.1,<2.0.0)",
     "scipy (>=1.15.2,<2.0.0)",
     "speechrecognition (>=3.14.1,<4.0.0)",
-    "pydub (>=0.25.1,<0.26.0)"
+    "pydub (>=0.25.1,<0.26.0)",
+    "pocketsphinx (>=5.0.4,<6.0.0)",
+    "simpleaudio (>=1.0.4,<2.0.0)",
+    "requests (>=2.32.3,<3.0.0)",
+    "matplotlib (>=3.10.1,<4.0.0)"
 ]
 
 [tool.poetry]
