@@ -1,0 +1,9 @@
+.env
+.idea
+.venv
+
+/.idea/
+/.venv
+/dataset
+/model
+prueba_voz.wav

@@ -1,0 +1,9 @@
+FROM codellama
+SYSTEM """
+You are a helpful and expert coding assistant. Provide clear, concise code solutions and explanations without unnecessary commentary.
+"""
+
+PARAMETER temperature 0.3
+PARAMETER stop "[INST]"
+PARAMETER stop "[/INST]"
+

@@ -1,0 +1,29 @@
+[project]
+name = "python-samples-2025"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Alonso Isidoro Román",email = "alonsoir@gmail.com"}
+]
+readme = "README.md"
+requires-python = "3.10.16"
+dependencies = [
+    "haystack-ai>=2.11.0,<3.0.0",
+    "python-dotenv>=1.0.1,<2.0.0",
+    "pyaudio>=0.2.14,<0.3.0",
+    "soundfile>=0.13.1,<0.14.0",
+    "pyttsx3>=2.98,<3.0",
+    "numpy>=1.21.0,<2.0.0",
+    "sounddevice (>=0.5.1,<0.6.0)",
+    "openai (>=1.66.3,<2.0.0)",
+    "tqdm (>=4.67.1,<5.0.0)",
+    "scikit-learn (>=1.6.1,<2.0.0)",
+    "scipy (>=1.15.2,<2.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "python_samples_2025", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
