@@ -2,6 +2,10 @@
 
 Este repositorio contiene una colección de scripts de Python diseñados para como integrar un modelo de reconocimiento de voces ligero para reconocer solo mi voz en un entorno domótico. Se trata de aprender que se puede hacer con mi modesto hardware en una primera aproximación naive al problema.
 He iterado poco a poco, de manera que el mejor ejemplo, creo, es voice_auth_vosk_improved.py. 
+
+Por motivos de compatibilidad, no puedo usar torch ni librerias que dependan de torch. El soporte en osx/intel es penoso, simplemente me cansé de
+pelear. Cuando tenga un equipo con linux y NVIDIA, lo retomaré.
+
 Tratará de descargarse un modelo VOSK de Español de España, te pedirá que grabes tu voz de referencia, y luego te dará un puntuación.
 Algo así:
 
@@ -133,6 +137,7 @@ Como se puede observar, la puntuación no es muy alta, supongo que se deberá a 
 - `rag_ollama_transcriber`: Carga ficheros en un BD vectorial in memory, usa librerias para recoger tu voz, la transcribe y la pasa a un modelo LLM cargado en ollama para que pregunte a esa base de datos vectorial. Te deja elegir el modelo que tengas en ollama.
 - `rag_transcriber.py`: Como el anterior, pero con el RAG y sin ollama.
 - `transcriber.py`: Como el anterior, pero sin el RAG y sin ollama.
+- `speech.py`: Usa speech_recognition. No es muy buena. 
 
 ## Requisitos
 
