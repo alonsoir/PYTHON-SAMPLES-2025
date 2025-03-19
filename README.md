@@ -167,6 +167,62 @@ Ejecuta cualquier script usando Python:
     ```bash
     poetry run python src/python_samples_2025/my_voice.py
     ```
+    
+    ```bash
+    python-samples-2025-py3.10┌<▸> ~/g/python-samples-2025 
+    └➤ poetry run python src/python_samples_2025/sphinx.py
+    [INFO] Inicializando el modelo de reconocimiento de voz...
+    /Users/aironman/git/python-samples-2025/src/python_samples_2025/sphinx.py:24: DeprecationWarning: default_config() is deprecated, just call Config() constructor
+    config = Decoder.default_config()
+    [SUCCESS] Modelo cargado correctamente.
+    [INFO] Procesando archivo de prueba /Users/aironman/git/python-samples-2025/prueba_voz.wav
+    [INFO] Reproduciendo audio de prueba...
+    [TRANSCRIPCIÓN] Archivo de prueba: hola están vivos hola soy yo
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_7.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_7.wav: sabes solo no pueda atender me
+    [SIMILITUD] mi_voz_7.wav: 27.59%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_6.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_6.wav: hora de que el suelo sabes afuera de quién soy
+    [SIMILITUD] mi_voz_6.wav: 29.73%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_4.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_4.wav: de acuerdo de acuerdo
+    [SIMILITUD] mi_voz_4.wav: 16.33%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_5.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_5.wav: a quién a mi voz la ves haciendo veloz
+    [SIMILITUD] mi_voz_5.wav: 33.33%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_1.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_1.wav: están vivos
+    [SIMILITUD] mi_voz_1.wav: 56.41%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_2.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_2.wav: sólo eso son súper usual es
+    [SIMILITUD] mi_voz_2.wav: 32.73%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_3.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_3.wav: creo que nos vemos bien
+    [SIMILITUD] mi_voz_3.wav: 35.29%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_10.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_10.wav: sabes sabes tu celda habéis haciendo me sola me
+    [SIMILITUD] mi_voz_10.wav: 16.00%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_8.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_8.wav: sólo ven
+    [SIMILITUD] mi_voz_8.wav: 16.67%
+    [INFO] Procesando /Users/aironman/git/python-samples-2025/dataset/mi_voz_9.wav
+    [INFO] Reproduciendo audio...
+    [TRANSCRIPCIÓN] mi_voz_9.wav: saben gu señor la ves
+    [SIMILITUD] mi_voz_9.wav: 24.49%
+    [SUCCESS] Gráfico guardado como 'similitud_transcripciones.png'
+    2025-03-19 09:50:40.228 Python[38849:198135] +[IMKClient subclass]: chose IMKClient_Modern
+    2025-03-19 09:50:40.228 Python[38849:198135] +[IMKInputSession subclass]: chose IMKInputSession_Modern
+    ```
+    ![como de similares son las voces guardadas en dataset con respesto a prueba_voz.wav](similitud_transcripciones.png)
 
 ## Contribuciones
 
