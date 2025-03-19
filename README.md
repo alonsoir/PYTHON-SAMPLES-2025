@@ -232,3 +232,145 @@ Las contribuciones son bienvenidas. Por favor, abre un issue o envía un pull re
 
 Este proyecto está licenciado bajo la Licencia MIT. Consulta el archivo `LICENSE` para más detalles.
 # PYTHON-SAMPLES-2025
+
+# BONUS!
+
+Un script para levantar un servidor Minecraft Bedrock para que tus hijos y sobrinos puedan conectarse desde
+sus Nintendo o PS.
+
+    /Users/aironman/git/python-samples-2025/src/python_samples_2025
+    python-samples-2025-py3.10┌<▸> ~/g/p/s/python_samples_2025
+    └➤ ./servidor_minecraft.sh
+
+    __  __ _                            __ _
+    |  \/  (_)_ ________ ___ ___ / _| |_
+    | |\/| | | '_\ /_ \/ __| '__/ _` | |_| __|
+    | |  | | | | | |  __/ (__| | | (_| |  _| |_
+    |_|  |_|_|_| |_|\___|\___|_|  \__,_|_|  \__|
+
+    ==========================================
+        ¡Tu servidor para Switch y PS5!
+            ¡Fácil y divertido
+    ==========================================
+
+    ¡Hola! Vamos a crear un servidor de Minecraft para que juegues con tus amigos. 🎮
+    Solo sigue las instrucciones y pronto estarás jugando. 😊
+
+    ¿Cómo quieres llamar tu servidor? (Ejemplo: Servidor de Minecraft): Marcos
+
+    Tu computadora tiene 32GB de RAM. ¡Genial!
+    ¿Cuánta RAM quieres usar? (1G, 2G, 4G) [Por defecto: 2G]:
+
+    Buscando todo lo que necesitamos... 🔍
+    Necesitamos Java 21 para Minecraft.
+    Instalando SDKMAN para tener Java...
+
+                                    -+syyyyyyys:
+                                `/yho:`       -yd.
+                            `/yh/`             +m.
+                        .oho.                 hy                          .`
+                        .sh/`                   :N`                `-/o`  `+dyyo:.
+                    .yh:`                     `M-          `-/osysoym  :hs` `-+sys:      hhyssssssssy+
+                    .sh:`                       `N:          ms/-``  yy.yh-      -hy.    `.N-````````+N.
+                `od/`                         `N-       -/oM-      ddd+`     `sd:     hNNm        -N:
+                :do`                           .M.       dMMM-     `ms.      /d+`     `NMMs       `do
+                .yy-                             :N`    ```mMMM.      -      -hy.       /MMM:       yh
+            `+d+`           `:/oo/`       `-/osyh/ossssssdNMM`           .sh:         yMMN`      /m.
+            -dh-           :ymNMMMMy  `-/shmNm-`:N/-.``   `.sN            /N-         `NMMy      .m/
+        `oNs`          -hysosmMMMMydmNmds+-.:ohm           :             sd`        :MMM/      yy
+        .hN+           /d:    -MMMmhs/-.`   .MMMh   .ss+-                 `yy`       sMMN`     :N.
+        :mN/           `N/     `o/-`         :MMMo   +MMMN-         .`      `ds       mMMh      do
+        /NN/            `N+....--:/+oooosooo+:sMMM:   hMMMM:        `my       .m+     -MMM+     :N.
+    /NMo              -+ooooo+/:-....`...:+hNMN.`NMMMd`.MM/       -m:    oMMN.     hs
+    -NMd`                                    :mm   -MMMm- .s/     -MMm.       /m-   mMMd     -N.
+    `mMM/                                      .-   /MMh. -dMo     -MMMy        od. .MMMs..---yh
+    +MMM.                                           sNo`.sNMM+     :MMMM/        sh`+MMMNmNm+++-
+    mMMM-                                           /--ohmMMM+     :MMMMm.`hyymmmdddo
+    MMMMh.                  ```` `-+yy/`yMMM/     :MMMMMy       -sm:.``..-:-.`
+    dMMMMmo-.``````..-:/osyhddddho.           `+shdh+.   hMMM:     :MmMMMM/   ./yy/` `:sys+/+sh/
+    .dMMMMMMmdddddmmNMMMNNNNNMMMMMs           sNdo-      dMMM-  `-/yd/MMMMm-:sy+.   :hs-      /N`
+    `/ymNNNNNNNmmdys+/::----/dMMm:          +m-         mMMM+ohmo/.` sMMMMdo-    .om:       `sh
+        `.-----+/.`       `.-+hh/`         `od.          NMMNmds/     `mmy:`     +mMy      `:yy.
+            /moyso+//+ossso:.           .yy`          `dy+:`         ..       :MMMN+---/oys:
+            /+m:  `.-:::-`               /d+                                    +MMMMMMMNh:`
+            +MN/                        -yh.                                     `+hddhy+.
+        /MM+                       .sh:
+        :NMo                      -sh/
+        -NMs                    `/yy:
+        .NMy                  `:sh+.
+    `mMm`               ./yds-
+    `dMMMmyo:-.````.-:oymNy:`
+    +NMMMMMMMMMMMMMMMMms:`
+        -+shmNMMMNmdy+:`
+
+                                                                    Now attempting installation...
+
+    Looking for a previous installation of SDKMAN...
+    SDKMAN found.
+
+    ======================================================================================================
+    You already have SDKMAN installed.
+    SDKMAN was found at:
+
+        /Users/aironman/.sdkman
+
+    Please consider running the following if you need to upgrade.
+
+        sdk selfupdate force
+
+    ======================================================================================================
+
+    Instalando Java 21... ⏳
+
+    No new candidates found at this time.
+
+    java 21.0.2-tem is already installed.
+
+    Using java version 21.0.2-tem in this shell.
+    ¡Java 21.0.2 listo! ✅
+    Instalando proctools...
+    ==> Downloading <https://formulae.brew.sh/api/formula.jws.json>
+    ==> Downloading <https://formulae.brew.sh/api/cask.jws.json>
+    Warning: proctools 0.4pre1 is already installed and up-to-date.
+    To reinstall 0.4pre1, run:
+    brew reinstall proctools
+    Usando ngrok sin token (la dirección cambiará cada vez que reinicies).
+
+    Creando carpetas para tu servidor... 📁
+
+    Buscando la versión más nueva de Minecraft... 🌟
+    Versión encontrada: 1.21.4 (build 212)
+    Ya tengo el servidor listo. ✅
+
+    Preparando el servidor para Switch y PS5... 🎮
+    Ya tengo Geyser. ✅
+    Ya tengo Floodgate. ✅
+
+    Preparando las reglas del servidor... 📜
+
+    Limpiando procesos antiguos... 🧹
+    ¡Iniciando tu servidor Marcos! ⏳
+
+    Using java version 21.0.2-tem in this shell.
+    Esperando a que el servidor esté listo...
+    ¡Servidor Marcos iniciado! ✅
+
+    Conectando tu servidor al mundo con ngrok... 🌍
+    Haciendo la dirección más fácil para tus amigos... ✂️
+
+    Creando botones en el escritorio... 🖱️
+    ¡Botón creado! ✅
+
+    ==========================================
+    🎉 ¡Marcos está listo para jugar! 🎉
+    ==========================================
+
+    👇 ¡Da esta dirección a tus amigos para que se unan! 👇
+    🌟 DIRECCIÓN FÁCIL: <https://is.gd/25KgXw>
+    O usa esto en Switch/PS5:
+    Dirección: 4.tcp.eu.ngrok.io
+    Puerto: 14868
+    📜 Mira las instrucciones en '/Users/aironman/Desktop/como_conectarse_a_Marcos.txt' en tu escritorio.
+    📋 Si algo falla, revisa el log en '/Users/aironman/minecraft_server/server.log'.
+    Para detener el servidor, cierra esta ventana o usa otra terminal y escribe 'stop'.
+
