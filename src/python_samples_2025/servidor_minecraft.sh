@@ -190,7 +190,7 @@ cp -f "$GEYSER_JAR" "$FLOODGATE_JAR" "$SERVER_DIR/plugins/"
 echo -e "\n${YELLOW}Preparando las reglas del servidor... 📜${NC}"
 echo "eula=true" > "$SERVER_DIR/eula.txt"
 cat > "$SERVER_DIR/server.properties" << EOL
-online-mode=true
+online-mode=false
 server-port=${DEFAULT_PORT}
 gamemode=survival
 difficulty=easy
