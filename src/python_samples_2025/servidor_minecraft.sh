@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Colores para mejor legibilidad
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,290 +13,311 @@ GEYSER_DIR="$SERVER_DIR/geyser"
 FLOODGATE_DIR="$SERVER_DIR/floodgate"
 JAR_DIR="$SERVER_DIR/jar"
 LOG_FILE="$SERVER_DIR/server.log"
+DEBUG_FILE="$SERVER_DIR/debug.log"
 
 # URLs para descargas
 PAPER_API="https://api.papermc.io/v2"
 PAPER_PROJECT="paper"
 GEYSER_DOWNLOAD="https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot"
 FLOODGATE_DOWNLOAD="https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot"
+ESSENTIALSX_DOWNLOAD="https://github.com/EssentialsX/Essentials/releases/download/2.20.1/EssentialsX-2.20.1.jar"
 
 # Valores por defecto
-DEFAULT_RAM="2G"
+DEFAULT_RAM="4"
 DEFAULT_PORT="25565"
 SERVER_NAME="Servidor de Minecraft"
-NGROK_TOKEN="TU_TOKEN_AQUI"  # Reemplaza con tu token si lo tienes, o déjalo así para usar sin token
+NGROK_TOKEN="TU_TOKEN_AQUI"  # Reemplaza con tu token si lo tienes
 
-# Función para matar procesos zombies
-cleanup() {
-    echo -e "${YELLOW}Cerrando el servidor y ngrok...${NC}"
+# Función para registrar mensajes de depuración
+log_debug() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$DEBUG_FILE"
+    echo -e "${YELLOW}$1${NC}"
+}
+
+# Función para limpiar procesos sin salir
+cleanup_processes() {
+    log_debug "Limpiando procesos antiguos..."
     if command -v pkill &> /dev/null; then
-        pkill -f "java.*paper-.*jar" 2>/dev/null
-        pkill -f ngrok 2>/dev/null
-    else
-        kill $(ps aux | grep "java.*paper-.*jar" | grep -v grep | awk '{print $2}') 2>/dev/null
-        kill $(ps aux | grep ngrok | grep -v grep | awk '{print $2}') 2>/dev/null
+        pkill -f "java.*paper-.*jar" 2>/dev/null && log_debug "Procesos Java terminados con pkill" || log_debug "No se encontraron procesos Java con pkill"
+        pkill -f ngrok 2>/dev/null && log_debug "Procesos ngrok terminados con pkill" || log_debug "No se encontraron procesos ngrok con pkill"
+        pkill -f "screen.*minecraft_server" 2>/dev/null && log_debug "Procesos screen terminados" || log_debug "No se encontraron procesos screen"
     fi
+}
+
+# Función para limpieza completa
+cleanup() {
+    log_debug "Iniciando limpieza completa..."
+    if screen -list | grep -q "minecraft_server"; then
+        log_debug "Enviando 'stop' al servidor via screen"
+        screen -S minecraft_server -p 0 -X stuff "stop^M"
+        sleep 5
+    fi
+    cleanup_processes
+    [ -n "$TAIL_PID" ] && kill "$TAIL_PID" 2>/dev/null && log_debug "Proceso tail ($TAIL_PID) terminado"
+    log_debug "Limpieza completada. Saliendo."
     exit 0
 }
 
-# Capturar Ctrl+C para limpiar procesos
+# Capturar Ctrl+C
 trap cleanup INT
 
-# ASCII Art para hacerlo amigable
+# Verificar la versión de Java
+check_java() {
+    log_debug "Verificando Java..."
+    if ! command -v java &> /dev/null; then
+        log_debug "Java no está instalado."
+        echo -e "${RED}Java no está instalado.${NC}"
+        exit 1
+    elif ! java -version 2>&1 | grep -q "21."; then
+        log_debug "Java instalado, pero no es versión 21."
+        echo -e "${RED}Necesitamos Java 21 (actual: $(java -version 2>&1 | head -1 | cut -d'"' -f2)).${NC}"
+        exit 1
+    else
+        JAVA_VERSION=$(java -version 2>&1 | head -1 | cut -d'"' -f2)
+        log_debug "Java $JAVA_VERSION ya está listo."
+        echo -e "${GREEN}¡Java $JAVA_VERSION listo! ✅${NC}"
+    fi
+}
+
+# Crear script de inicio persistente
+create_startup_script() {
+    log_debug "Creando scripts de inicio..."
+    local startup_script="$SERVER_DIR/server_minecraft.sh"
+    cat > "$startup_script" << EOL
+#!/bin/bash
+cd "$SERVER_DIR"
+source "$HOME/.sdkman/bin/sdkman-init.sh" 2>/dev/null
+sdk use java 21.0.2-tem 2>/dev/null || sdk use java 21.0.1-open 2>/dev/null
+java -Xms${RAM_AMOUNT}G -Xmx${RAM_AMOUNT}G -jar "$SERVER_JAR" nogui
+EOL
+    chmod +x "$startup_script" || { log_debug "Fallo al hacer $startup_script ejecutable"; echo -e "${RED}Fallo al crear script${NC}"; exit 1; }
+    echo -e "${GREEN}¡Scripts de inicio creados! ✅${NC}"
+}
+
+# Generar y mostrar código QR
+generate_qr() {
+    log_debug "Generando código QR con dirección: $NGROK_SIMPLE"
+    if command -v qrencode &> /dev/null; then
+        qrencode -s 10 -o "$SERVER_DIR/minecraft_qr.png" "$NGROK_SIMPLE" 2>/dev/null && log_debug "Código QR generado" || log_debug "Fallo al generar QR"
+        echo -e "${YELLOW}Escanea este código QR:${NC}"
+        qrencode -t ANSIUTF8 "$NGROK_SIMPLE" 2>/dev/null
+    else
+        echo -e "${YELLOW}qrencode no disponible${NC}"
+    fi
+}
+
+# Iniciar el servidor con screen
+start_server_with_screen() {
+    log_debug "Iniciando servidor ${SERVER_NAME} con screen..."
+    source "$HOME/.sdkman/bin/sdkman-init.sh" 2>/dev/null
+    sdk use java 21.0.2-tem 2>/dev/null || sdk use java 21.0.1-open 2>/dev/null
+    cd "$SERVER_DIR" || { log_debug "Fallo al cambiar a $SERVER_DIR"; echo -e "${RED}No se pudo acceder a $SERVER_DIR${NC}"; exit 1; }
+    
+    # Limpiar caché de Geyser
+    log_debug "Eliminando caché de Geyser para evitar errores..."
+    rm -rf "$SERVER_DIR/plugins/Geyser-Spigot/cache" && log_debug "Caché de Geyser eliminado" || log_debug "No se pudo eliminar caché de Geyser"
+    
+    if ! command -v screen &> /dev/null; then
+        log_debug "Screen no está instalado"
+        echo -e "${RED}Screen no está instalado. Instalando...${NC}"
+        brew install screen || { log_debug "Fallo al instalar screen"; echo -e "${RED}Fallo al instalar screen${NC}"; exit 1; }
+    fi
+    
+    log_debug "Lanzando servidor en screen..."
+    screen -dmS minecraft_server bash -c "java -Xms${RAM_AMOUNT}G -Xmx${RAM_AMOUNT}G -jar \"$SERVER_JAR\" nogui >> \"$LOG_FILE\" 2>&1"
+    if [ $? -ne 0 ]; then
+        log_debug "Fallo al iniciar screen"
+        echo -e "${RED}Fallo al iniciar screen${NC}"
+        exit 1
+    fi
+    
+    sleep 2
+    if screen -list | grep -q "minecraft_server"; then
+        log_debug "Screen 'minecraft_server' está activo"
+        echo -e "${GREEN}Screen iniciado correctamente${NC}"
+    else
+        log_debug "Screen no se está ejecutando"
+        echo -e "${RED}Screen no se inició${NC}"
+        exit 1
+    fi
+    
+    echo -e "${YELLOW}Esperando a que el servidor esté listo...${NC}"
+    local timeout=60
+    local elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+        if grep -q "Done" "$LOG_FILE"; then
+            log_debug "Servidor iniciado (encontrado 'Done')"
+            echo -e "${GREEN}¡Servidor ${SERVER_NAME} iniciado! ✅${NC}"
+            return
+        elif grep -q "Failed to start" "$LOG_FILE"; then
+            log_debug "Fallo al iniciar servidor (encontrado 'Failed to start')"
+            echo -e "${RED}Fallo al iniciar servidor${NC}"
+            cat "$LOG_FILE"
+            exit 1
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+    log_debug "Timeout alcanzado, servidor no arrancó"
+    echo -e "${RED}El servidor no arrancó en $timeout segundos${NC}"
+    cat "$LOG_FILE"
+    exit 1
+}
+
+# Interfaz interactiva con screen
+interactive_console() {
+    log_debug "Iniciando consola interactiva..."
+    echo -e "\n${GREEN}¡El servidor está funcionando!${NC}"
+    echo -e "${YELLOW}Escribe comandos (stop, list, say Hola):${NC}"
+    tail -F "$LOG_FILE" &
+    TAIL_PID=$!
+    log_debug "Log en tiempo real iniciado con PID: $TAIL_PID"
+    while true; do
+        read -p "> " command
+        if [ -n "$command" ]; then
+            log_debug "Comando recibido: $command"
+            local lines_before=$(wc -l < "$LOG_FILE")
+            screen -S minecraft_server -p 0 -X stuff "$command^M"
+            sleep 1
+            tail -n +$((lines_before + 1)) "$LOG_FILE" | grep -E "(issued server command|players online|[INFO]: \[.*\]:)" || echo "No hay respuesta inmediata."
+        fi
+    done
+}
+
+# Inicio del script
+log_debug "Script iniciado"
 echo -e "${BLUE}"
 cat << "EOT"
-  __  __ _                            __ _   
- |  \/  (_)_ __   ___  ___ _ __ __ _ / _| |_ 
- | |\/| | | '_ \ / _ \/ __| '__/ _` | |_| __|
- | |  | | | | | |  __/ (__| | | (_| |  _| |_ 
+  **  ** *                            *_ _   
+ |  \/  (_)_ **   **_  ___ *_* __ * / *| |_ 
+ | |\/| | | '_ \ / * \/ *_| '__/ *` | |*| __|
+ | |  | | | | | |  **/ (**| | | (_| |  *| |* 
  |_|  |_|_|_| |_|\___|\___|_|  \__,_|_|  \__|
-                                              
 EOT
 echo -e "${NC}"
 
-echo -e "${PURPLE}==========================================${NC}"
-echo -e "${PURPLE}    ¡Tu servidor para Switch y PS5!${NC}"
-echo -e "${PURPLE}         ¡Fácil y divertido!${NC}"
-echo -e "${PURPLE}==========================================${NC}"
-
-echo -e "\n${YELLOW}¡Hola! Vamos a crear un servidor de Minecraft para que juegues con tus amigos. 🎮${NC}"
-echo -e "${YELLOW}Solo sigue las instrucciones y pronto estarás jugando. 😊${NC}\n"
-
 # Preguntar por el nombre del servidor
+log_debug "Solicitando nombre del servidor"
 read -p "¿Cómo quieres llamar tu servidor? (Ejemplo: $SERVER_NAME): " SERVER_NAME_INPUT
 SERVER_NAME=${SERVER_NAME_INPUT:-$SERVER_NAME}
+log_debug "Nombre del servidor: $SERVER_NAME"
 
-# Preguntar por RAM si hay más de 8GB disponible
+# Calcular RAM disponible
+log_debug "Calculando RAM disponible"
 TOTAL_RAM=$(sysctl -n hw.memsize | awk '{print int($1/1024/1024/1024)}')
-if [ $TOTAL_RAM -gt 8 ]; then
-    echo -e "\n${YELLOW}Tu computadora tiene ${TOTAL_RAM}GB de RAM. ¡Genial!${NC}"
-    read -p "¿Cuánta RAM quieres usar? (1G, 2G, 4G) [Por defecto: $DEFAULT_RAM]: " RAM_AMOUNT
-    RAM_AMOUNT=${RAM_AMOUNT:-$DEFAULT_RAM}
-else
-    RAM_AMOUNT=$DEFAULT_RAM
-    echo -e "${YELLOW}Usaremos ${RAM_AMOUNT} de RAM para tu servidor.${NC}"
-fi
+echo -e "\n${YELLOW}Tu computadora tiene ${TOTAL_RAM}GB de RAM.${NC}"
+read -p "¿Cuánta RAM quieres usar? (Ejemplo: 4 para 4GB) [Por defecto: $DEFAULT_RAM]: " RAM_INPUT
+RAM_AMOUNT=${RAM_INPUT:-$DEFAULT_RAM}
+log_debug "RAM asignada: ${RAM_AMOUNT}GB"
+echo -e "${GREEN}Asignando ${RAM_AMOUNT}GB de RAM.${NC}"
 
 # Verificación de dependencias
-echo -e "\n${YELLOW}Buscando todo lo que necesitamos... 🔍${NC}"
-
-# Verificar e instalar Java con SDKMAN (Java 21 para Minecraft 1.21+)
-if ! command -v java &> /dev/null || ! java -version 2>&1 | grep -q "21."; then
-    echo -e "${RED}Necesitamos Java 21 para Minecraft.${NC}"
-    if ! command -v sdk &> /dev/null; then
-        echo -e "${YELLOW}Instalando SDKMAN para tener Java...${NC}"
-        curl -s "https://get.sdkman.io" | bash
-        source "$HOME/.sdkman/bin/sdkman-init.sh"
-    else
-        source "$HOME/.sdkman/bin/sdkman-init.sh"
-    fi
-    echo -e "${YELLOW}Instalando Java 21... ⏳${NC}"
-    sdk update
-    sdk install java 21.0.2-tem 2>/dev/null || sdk install java 21.0.2-tem
-    sdk use java 21.0.2-tem
-fi
-
-JAVA_VERSION=$(java -version 2>&1 | head -1 | cut -d'"' -f2)
-echo -e "${GREEN}¡Java $JAVA_VERSION listo! ✅${NC}"
-
-# Verificar Homebrew
+log_debug "Verificando dependencias..."
+check_java
 if ! command -v brew &> /dev/null; then
+    log_debug "Instalando Homebrew..."
     echo -e "${YELLOW}Instalando Homebrew...${NC}"
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "$HOME/.zprofile"
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || { log_debug "Fallo al instalar Homebrew"; echo -e "${RED}Fallo al instalar Homebrew${NC}"; exit 1; }
     eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
-
-# Verificar e instalar dependencias de Homebrew
-for tool in "ngrok/ngrok/ngrok" "jq" "qrencode" "proctools"; do
+for tool in "ngrok/ngrok/ngrok" "jq" "qrencode" "screen"; do
     tool_name=$(echo "$tool" | cut -d'/' -f1)
     if ! command -v "$tool_name" &> /dev/null; then
+        log_debug "Instalando $tool_name..."
         echo -e "${YELLOW}Instalando $tool_name...${NC}"
-        brew install "$tool"
+        brew install "$tool" || { log_debug "Fallo al instalar $tool_name"; echo -e "${RED}Fallo al instalar $tool_name${NC}"; exit 1; }
     fi
 done
 
-# Configurar ngrok con el token automáticamente
-if [ -n "$NGROK_TOKEN" ] && [ "$NGROK_TOKEN" != "TU_TOKEN_AQUI" ]; then
-    echo -e "${YELLOW}Configurando ngrok para que funcione automáticamente...${NC}"
-    ngrok config add-authtoken "$NGROK_TOKEN" 2>/dev/null
-else
-    echo -e "${YELLOW}Usando ngrok sin token (la dirección cambiará cada vez que reinicies).${NC}"
-fi
-
 # Crear directorios
-echo -e "\n${YELLOW}Creando carpetas para tu servidor... 📁${NC}"
-mkdir -p "$SERVER_DIR" "$GEYSER_DIR" "$FLOODGATE_DIR" "$JAR_DIR"
+log_debug "Creando directorios..."
+mkdir -p "$SERVER_DIR" "$GEYSER_DIR" "$FLOODGATE_DIR" "$JAR_DIR" || { log_debug "Fallo al crear directorios"; echo -e "${RED}Fallo al crear directorios${NC}"; exit 1; }
+touch "$DEBUG_FILE" || { log_debug "Fallo al crear $DEBUG_FILE"; echo -e "${RED}Fallo al crear debug.log${NC}"; exit 1; }
 
-# Obtener la última versión de PaperMC
-echo -e "\n${YELLOW}Buscando la versión más nueva de Minecraft... 🌟${NC}"
+# Obtener y descargar PaperMC
+log_debug "Buscando versión de PaperMC..."
 MC_VERSION=$(curl -s "$PAPER_API/projects/$PAPER_PROJECT" | jq -r '.versions[-1]' 2>/dev/null)
 LATEST_BUILD=$(curl -s "$PAPER_API/projects/$PAPER_PROJECT/versions/$MC_VERSION" | jq -r '.builds[-1]' 2>/dev/null)
-
 if [ -z "$MC_VERSION" ] || [ -z "$LATEST_BUILD" ]; then
-    echo -e "${RED}No pude encontrar la versión más nueva. Usaré una que funciona: 1.20.4.${NC}"
-    MC_VERSION="1.20.4"
-    LATEST_BUILD="468"
+    log_debug "No se pudo obtener versión de PaperMC. Usando 1.21.4 build 212"
+    MC_VERSION="1.21.4"
+    LATEST_BUILD="212"
 fi
-echo -e "${GREEN}Versión encontrada: $MC_VERSION (build $LATEST_BUILD)${NC}"
+log_debug "Versión encontrada: $MC_VERSION (build $LATEST_BUILD)"
+echo -e "${GREEN}Versión: $MC_VERSION (build $LATEST_BUILD)${NC}"
 
-# Descargar PaperMC
 PAPER_JAR="$JAR_DIR/paper-$MC_VERSION-$LATEST_BUILD.jar"
 PAPER_DOWNLOAD="$PAPER_API/projects/$PAPER_PROJECT/versions/$MC_VERSION/builds/$LATEST_BUILD/downloads/paper-$MC_VERSION-$LATEST_BUILD.jar"
-
-if [ ! -f "$PAPER_JAR" ] || [ ! -s "$PAPER_JAR" ] || ! java -jar "$PAPER_JAR" --version &>/dev/null; then
-    echo -e "${YELLOW}Descargando el servidor de Minecraft... ⏬${NC}"
-    curl -L -o "$PAPER_JAR" "$PAPER_DOWNLOAD"
-    if [ ! -s "$PAPER_JAR" ] || ! java -jar "$PAPER_JAR" --version &>/dev/null; then
-        echo -e "${RED}Error al descargar. Intentando de nuevo...${NC}"
-        rm -f "$PAPER_JAR"
-        curl -L -o "$PAPER_JAR" "$PAPER_DOWNLOAD"
-    fi
-    if [ -s "$PAPER_JAR" ] && java -jar "$PAPER_JAR" --version &>/dev/null; then
-        echo -e "${GREEN}¡Servidor descargado! ✅${NC}"
-    else
-        echo -e "${RED}No pude descargar el servidor. Intenta de nuevo más tarde.${NC}"
-        exit 1
-    fi
-else
-    echo -e "${GREEN}Ya tengo el servidor listo. ✅${NC}"
+if [ ! -f "$PAPER_JAR" ] || [ ! -s "$PAPER_JAR" ]; then
+    log_debug "Descargando PaperMC desde $PAPER_DOWNLOAD"
+    curl -L -o "$PAPER_JAR" "$PAPER_DOWNLOAD" || { log_debug "Fallo al descargar PaperMC"; echo -e "${RED}Fallo al descargar PaperMC${NC}"; exit 1; }
 fi
-
+log_debug "PaperMC listo en $PAPER_JAR"
 SERVER_JAR="$PAPER_JAR"
 
-# Descargar Geyser y Floodgate
-echo -e "\n${YELLOW}Preparando el servidor para Switch y PS5... 🎮${NC}"
+# Descargar plugins
+log_debug "Preparando plugins..."
 GEYSER_JAR="$GEYSER_DIR/Geyser-Spigot.jar"
 FLOODGATE_JAR="$FLOODGATE_DIR/floodgate-spigot.jar"
-
-for jar in "$GEYSER_JAR" "$FLOODGATE_JAR"; do
-    download_url=$([ "$jar" = "$GEYSER_JAR" ] && echo "$GEYSER_DOWNLOAD" || echo "$FLOODGATE_DOWNLOAD")
-    name=$([ "$jar" = "$GEYSER_JAR" ] && echo "Geyser" || echo "Floodgate")
+ESSENTIALSX_JAR="$JAR_DIR/EssentialsX-2.20.1.jar"
+for jar in "$GEYSER_JAR" "$FLOODGATE_JAR" "$ESSENTIALSX_JAR"; do
+    download_url=$([ "$jar" = "$GEYSER_JAR" ] && echo "$GEYSER_DOWNLOAD" || [ "$jar" = "$FLOODGATE_JAR" ] && echo "$FLOODGATE_DOWNLOAD" || echo "$ESSENTIALSX_DOWNLOAD")
+    name=$([ "$jar" = "$GEYSER_JAR" ] && echo "Geyser" || [ "$jar" = "$FLOODGATE_JAR" ] && echo "Floodgate" || echo "EssentialsX")
     if [ ! -f "$jar" ] || [ ! -s "$jar" ]; then
-        echo -e "${YELLOW}Descargando $name...${NC}"
-        curl -L -o "$jar" "$download_url"
-        [ -s "$jar" ] && echo -e "${GREEN}$name descargado! ✅${NC}" || { echo -e "${RED}Error con $name.${NC}"; exit 1; }
-    else
-        echo -e "${GREEN}Ya tengo $name. ✅${NC}"
+        log_debug "Descargando $name desde $download_url"
+        curl -L -o "$jar" "$download_url" || { log_debug "Fallo al descargar $name"; echo -e "${RED}Fallo al descargar $name${NC}"; exit 1; }
     fi
 done
 
 # Configurar plugins
-mkdir -p "$SERVER_DIR/plugins"
-cp -f "$GEYSER_JAR" "$FLOODGATE_JAR" "$SERVER_DIR/plugins/"
+log_debug "Copiando plugins..."
+mkdir -p "$SERVER_DIR/plugins" || { log_debug "Fallo al crear plugins"; echo -e "${RED}Fallo al crear plugins${NC}"; exit 1; }
+cp -f "$GEYSER_JAR" "$FLOODGATE_JAR" "$ESSENTIALSX_JAR" "$SERVER_DIR/plugins/" || { log_debug "Fallo al copiar plugins"; echo -e "${RED}Fallo al copiar plugins${NC}"; exit 1; }
 
-# Aceptar EULA y configurar server.properties
-echo -e "\n${YELLOW}Preparando las reglas del servidor... 📜${NC}"
-echo "eula=true" > "$SERVER_DIR/eula.txt"
-cat > "$SERVER_DIR/server.properties" << EOL
+# Configurar archivos del servidor
+log_debug "Configurando archivos del servidor..."
+echo "eula=true" > "$SERVER_DIR/eula.txt" || { log_debug "Fallo al crear eula.txt"; echo -e "${RED}Fallo al crear eula.txt${NC}"; exit 1; }
+cat > "$SERVER_DIR/server.properties" << EOL || { log_debug "Fallo al crear server.properties"; echo -e "${RED}Fallo al crear server.properties${NC}"; exit 1; }
 online-mode=false
 server-port=${DEFAULT_PORT}
 gamemode=survival
 difficulty=easy
 max-players=20
 motd=\\u00A7e\\u00A7l${SERVER_NAME}\\u00A7r \\u00A7a\\u00A7oJava + Bedrock\\u00A7r
+white-list=false
+enforce-whitelist=false
 EOL
 
-# Matar procesos zombies previos
-echo -e "\n${YELLOW}Limpiando procesos antiguos... 🧹${NC}"
-if command -v pkill &> /dev/null; then
-    pkill -f "java.*paper-.*jar" 2>/dev/null
-    pkill -f ngrok 2>/dev/null
+# Matar procesos antiguos
+cleanup_processes
+
+# Crear script de inicio
+create_startup_script
+
+# Iniciar ngrok
+log_debug "Iniciando ngrok..."
+ngrok tcp ${DEFAULT_PORT} --log=stdout > "$SERVER_DIR/ngrok.log" 2>&1 &
+NGROK_PID=$!
+sleep 5
+NGROK_URL=$(grep -o "tcp://.*" "$SERVER_DIR/ngrok.log" | tail -1)
+if [ -n "$NGROK_URL" ]; then
+    NGROK_SIMPLE=$(echo "$NGROK_URL" | sed 's|tcp://||')
+    log_debug "URL de ngrok: $NGROK_SIMPLE"
+    NGROK_HOST=$(echo "$NGROK_SIMPLE" | cut -d':' -f1)
+    NGROK_PORT=$(echo "$NGROK_SIMPLE" | cut -d':' -f2)
 else
-    kill $(ps aux | grep "java.*paper-.*jar" | grep -v grep | awk '{print $2}') 2>/dev/null
-    kill $(ps aux | grep ngrok | grep -v grep | awk '{print $2}') 2>/dev/null
+    log_debug "Fallo al obtener URL de ngrok"
+    NGROK_SIMPLE="localhost:$DEFAULT_PORT"
+    NGROK_HOST="localhost"
+    NGROK_PORT="$DEFAULT_PORT"
 fi
-sleep 2  # Dar tiempo para que los procesos terminen
-
-# Iniciar el servidor en segundo plano
-echo -e "${YELLOW}¡Iniciando tu servidor ${SERVER_NAME}! ⏳${NC}"
-source "$HOME/.sdkman/bin/sdkman-init.sh" 2>/dev/null
-sdk use java 21.0.2-tem 2>/dev/null
-cd "$SERVER_DIR"
-java -Xms${RAM_AMOUNT} -Xmx${RAM_AMOUNT} -jar "$SERVER_JAR" nogui > "$LOG_FILE" 2>&1 &
-
-# Esperar a que el servidor esté listo
-echo -e "${YELLOW}Esperando a que el servidor esté listo...${NC}"
-until grep -q "Done" "$LOG_FILE" || grep -q "Failed to start" "$LOG_FILE"; do
-    sleep 2
-done
-
-if grep -q "Failed to start" "$LOG_FILE"; then
-    echo -e "${RED}¡Error al iniciar el servidor! Mira el archivo de log en '${LOG_FILE}' para más detalles.${NC}"
-    cat "$LOG_FILE"
-    exit 1
-fi
-echo -e "${GREEN}¡Servidor ${SERVER_NAME} iniciado! ✅${NC}"
-
-# Iniciar ngrok y obtener la URL
-echo -e "\n${YELLOW}Conectando tu servidor al mundo con ngrok... 🌍${NC}"
-if command -v pkill &> /dev/null; then
-    pkill -f ngrok 2>/dev/null
-else
-    kill $(ps aux | grep ngrok | grep -v grep | awk '{print $2}') 2>/dev/null
-fi
-ngrok tcp ${DEFAULT_PORT} --log=stdout > "$SERVER_DIR/ngrok.log" 2>/dev/null &
-sleep 10
-
-NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url' 2>/dev/null || grep -o "tcp://.*" "$SERVER_DIR/ngrok.log" | tail -1)
-if [ -z "$NGROK_URL" ]; then
-    echo -e "${RED}No pude conectar con ngrok. Usa 'localhost:${DEFAULT_PORT}' en casa.${NC}"
-    NGROK_URL="localhost:${DEFAULT_PORT}"
-fi
-
-NGROK_HOST=$(echo "$NGROK_URL" | sed 's|tcp://||' | cut -d':' -f1)
-NGROK_PORT=$(echo "$NGROK_URL" | sed 's|tcp://||' | cut -d':' -f2)
-NGROK_SIMPLE="$NGROK_HOST:$NGROK_PORT"  # Formato sin tcp:// para acortar
-
-# Acortar la URL con fallback robusto
-echo -e "${YELLOW}Haciendo la dirección más fácil para tus amigos... ✂️${NC}"
-SHORT_URL=$(curl -s "https://tinyurl.com/api-create.php?url=$NGROK_SIMPLE" 2>/dev/null)
-if [ -z "$SHORT_URL" ] || echo "$SHORT_URL" | grep -qi "error"; then
-    SHORT_URL=$(curl -s "https://is.gd/create.php?format=simple&url=$NGROK_SIMPLE" 2>/dev/null)
-fi
-if [ -z "$SHORT_URL" ] || echo "$SHORT_URL" | grep -qi "error"; then
-    SHORT_URL="$NGROK_SIMPLE"  # Último fallback: usar la URL original
-fi
-echo "$SHORT_URL" > "$SERVER_DIR/direccion_servidor.txt"
-echo "$NGROK_SIMPLE" > "$SERVER_DIR/direccion_servidor_simple.txt"
 
 # Generar QR
-qrencode -o "$SERVER_DIR/minecraft_qr.png" "$NGROK_SIMPLE" 2>/dev/null
+generate_qr
 
-# Guardar instrucciones en el escritorio
-INSTRUCTIONS_FILE="$HOME/Desktop/como_conectarse_a_${SERVER_NAME}.txt"
-cat > "$INSTRUCTIONS_FILE" << EOT
-¡Hola! Conéctate a ${SERVER_NAME}:
-1. Abre Minecraft en Switch/PS5
-2. Ve a "Servidores" y "Añadir servidor"
-3. Nombre: ${SERVER_NAME}
-4. Dirección: ${NGROK_HOST}
-5. Puerto: ${NGROK_PORT}
-6. ¡Juega! 🎉
-URL fácil: ${SHORT_URL}
-EOT
+# Mostrar información
+echo -e "\n${GREEN}Dirección: ${PURPLE}${NGROK_SIMPLE}${NC}"
 
-# Accesos directos en el escritorio
-DESKTOP="$HOME/Desktop"
-if [ -d "$DESKTOP" ]; then
-    echo -e "\n${YELLOW}Creando botones en el escritorio... 🖱️${NC}"
-    echo -e "#!/bin/bash\ncd \"$SERVER_DIR\"\njava -Xms${RAM_AMOUNT} -Xmx${RAM_AMOUNT} -jar \"$SERVER_JAR\" nogui" > "$DESKTOP/$SERVER_NAME - Iniciar.command"
-    chmod +x "$DESKTOP/$SERVER_NAME - Iniciar.command"
-    echo -e "${GREEN}¡Botón creado! ✅${NC}"
-fi
-
-# Mostrar la URL de forma muy visible
-echo -e "\n${GREEN}==========================================${NC}"
-echo -e "${GREEN}🎉 ¡${SERVER_NAME} está listo para jugar! 🎉${NC}"
-echo -e "${GREEN}==========================================${NC}"
-echo -e "${YELLOW}👇 ¡Da esta dirección a tus amigos para que se unan! 👇${NC}"
-echo -e "${GREEN}🌟 DIRECCIÓN FÁCIL: ${PURPLE}${SHORT_URL}${NC}"
-echo -e "${YELLOW}O usa esto en Switch/PS5:${NC}"
-echo -e "${GREEN}   Dirección: ${PURPLE}${NGROK_HOST}${NC}"
-echo -e "${GREEN}   Puerto: ${PURPLE}${NGROK_PORT}${NC}"
-echo -e "${YELLOW}📜 Mira las instrucciones en '${GREEN}${INSTRUCTIONS_FILE}${NC}' en tu escritorio.${NC}"
-echo -e "${YELLOW}📋 Si algo falla, revisa el log en '${GREEN}${LOG_FILE}${NC}'.${NC}"
-echo -e "${YELLOW}Para detener el servidor, cierra esta ventana o usa otra terminal y escribe 'stop'.${NC}"
-
-# Mantener el script corriendo para que el servidor siga activo
-wait
+# Iniciar servidor y consola
+start_server_with_screen
+interactive_console
