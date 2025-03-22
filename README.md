@@ -236,7 +236,32 @@ Este proyecto está licenciado bajo la Licencia MIT. Consulta el archivo `LICENS
 # BONUS!
 
 Un script para levantar un servidor Minecraft Bedrock para que tus hijos y sobrinos puedan conectarse desde
-sus Nintendo o PS.
+sus Nintendo o PS. Esta versión se ha probado únicamente con ngrok tcp y una ps5 como cliente en red local!
+No he conseguido que funcione con los niños jugando desde casa, probablemente debido a dos problemas que he 
+podido identificar:
+
+1) Los niños están detrás de algún mecanismo de proteccion de menores que les impide conectarse a servidores 
+externos, literalmente, no pueden agregar servidores externos. Puede que se arregle procurando que sus gamer
+tag estén asociados a un email, de manera que así puedan conectarse a minecraft.com y desde ahí indicarles a
+Mojang que por favor dejen jugar online en servidores controlados por sus papás, o en este caso particular, 
+su tio.
+
+2) Los niños además, deben conectarse a un servidor externo por UDP, en vez de TCP. El script servidor_minecraft.sh
+está pensado para este caso. El script servidor_minecraft_universal.sh está pensado para levantar dos contenedores 
+docker, uno con el servidor bedrock, otro con playit.gg que levanta un tunel proxy udp. 
+Está por probar, aún no sé si funciona. Si entro en la url de control, veo que hay una ip y un puerto asignado a peticiones
+UDP, por lo que debería funcionar, pero mucho me temo, que si la conexión es estable, que está por ver, aún así, 
+los niños deberán averiguar el email y contraseña asignados a los gamertags con los que juegan.
+
+Asegurate de tener un fichero .env-minecraft con valores parecidos a estos:
+
+# .env-minecraft file
+
+# Sacalos de esta web, crea credenciales: <https://playit.gg/> Ve a Tunnels, Update Local Address, selecciona Minecraft bedrock defaults
+PLAYIT_AGENT_PORT=
+PLAYIT_AGENT_URL=
+SECRET_KEY=
+
 
     /Users/aironman/git/python-samples-2025/src/python_samples_2025
     python-samples-2025-py3.10┌<▸> ~/g/p/s/python_samples_2025
@@ -374,3 +399,28 @@ sus Nintendo o PS.
     📋 Si algo falla, revisa el log en '/Users/aironman/minecraft_server/server.log'.
     Para detener el servidor, cierra esta ventana o usa otra terminal y escribe 'stop'.
 
+python-samples-2025-py3.10┌<▸> ~/g/p/s/python_samples_2025
+└➤ ./servidor_minecraft_universal.sh
+Cargando variables de entorno desde .env-minecraft...
+Limpiando contenedor de Minecraft Bedrock previo...
+minecraft-bedrock
+minecraft-bedrock
+Limpiando contenedor de Playit.gg previo...
+playit-agent
+playit-agent
+Iniciando servidor Minecraft Bedrock...
+9525ebb995dec874a2774ad636259ac885afcaad059e7348c637be4a74e02498
+Iniciando Playit.gg en Docker...
+ebf2c860029c222eb915842b97bf311379e15aaf5b0338736f515072df7576ac
+Esperando a que los contenedores estén listos...
+Starting Nmap 7.95 ( <https://nmap.org> ) at 2025-03-22 21:48 CET
+Nmap scan report for tell-app.gl.at.ply.gg (147.185.221.16)
+Host is up (0.014s latency).
+
+PORT      STATE    SERVICE
+50643/tcp filtered unknown
+
+Nmap done: 1 IP address (1 host up) scanned in 0.38 seconds
+¡El servidor de Minecraft está listo! Puedes unirte a través de la URL: tell-app.gl.at.ply.gg:50643
+python-samples-2025-py3.10┌<▸> ~/g/p/s/python_samples_2025
+└➤
