@@ -2,6 +2,7 @@ import asyncio
 import os
 from textwrap import dedent
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 import requests
@@ -35,14 +36,8 @@ spark = SparkSession.builder \
 class DeltaLakeTools:
     def __init__(self, table_path):
         self.table_path = table_path
-        self.table_name = "movies"
         if not os.path.exists(table_path):
             os.makedirs(table_path)
-
-    def clean_column_names(self, df):
-        """Renombrar columnas para eliminar caracteres no permitidos"""
-        new_columns = [col.replace(" ", "_").replace("(", "").replace(")", "") for col in df.columns]
-        return df.toDF(*new_columns)
 
     def initialize_from_remote_csv(self, url):
         local_csv_path = "temp_movies.csv"
@@ -50,17 +45,28 @@ class DeltaLakeTools:
         with open(local_csv_path, "wb") as f:
             f.write(response.content)
         df = spark.read.option("header", "true").csv(local_csv_path)
-        df_cleaned = self.clean_column_names(df)
-        df_cleaned.write.format("delta").mode("overwrite").save(self.table_path)
-        spark.sql(f"CREATE TABLE IF NOT EXISTS {self.table_name} USING DELTA LOCATION '{self.table_path}'")
-        os.remove(local_csv_path)
+        # Inspeccionar columnas originales
+        original_columns = df.columns
+        logging.info(f"Columnas originales del CSV: {original_columns}")
+        # Definir columnas esperadas
+        expected_columns = ["Rank", "Title", "Genre", "Description", "Director", "Actors", "Year", "Runtime_Minutes", "Rating", "Votes", "Revenue_Millions", "Metascore"]
+        if len(original_columns) != len(expected_columns):
+            logging.warning(f"El número de columnas no coincide. Original: {len(original_columns)}, Esperado: {len(expected_columns)}")
+        df = df.toDF(*expected_columns[:len(original_columns)])
+        df = df.withColumn("Rating", col("Rating").cast("float")).filter(col("Rating").isNotNull())
+        df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(self.table_path)
         logging.info(f"Tabla Delta inicializada en {self.table_path} con datos de {url}")
+        os.remove(local_csv_path)
 
     async def query(self, sql_query):
-        """Ejecutar consulta SQL y devolver resultados en Markdown"""
+        """Ejecutar consulta sobre la tabla Delta y devolver resultados en Markdown"""
         logging.info(f"Ejecutando consulta: {sql_query}")
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: spark.sql(sql_query).toPandas().to_markdown())
+        df = spark.read.format("delta").load(self.table_path)
+        if "AVG" in sql_query.upper():
+            result = df.agg({"Rating": "avg"}).toPandas().to_markdown()
+        else:
+            result = df.orderBy(df.Rating.desc()).limit(5).select("Title", "Rating").toPandas().to_markdown()
         logging.info(f"Resultado de la consulta: {result}")
         return result
 
@@ -70,11 +76,15 @@ class DeltaLakeTools:
         response = requests.get(url)
         with open(local_csv_path, "wb") as f:
             f.write(response.content)
-        new_df = spark.read.option("header", "true").csv(local_csv_path)
-        new_df_cleaned = self.clean_column_names(new_df)
-        await loop.run_in_executor(None, lambda: new_df_cleaned.write.format("delta").mode("overwrite").save(self.table_path))
-        os.remove(local_csv_path)
+        df = spark.read.option("header", "true").csv(local_csv_path)
+        original_columns = df.columns
+        logging.info(f"Columnas originales del CSV (actualización): {original_columns}")
+        expected_columns = ["Rank", "Title", "Genre", "Description", "Director", "Actors", "Year", "Runtime_Minutes", "Rating", "Votes", "Revenue_Millions", "Metascore"]
+        df = df.toDF(*expected_columns[:len(original_columns)])
+        df = df.withColumn("Rating", col("Rating").cast("float")).filter(col("Rating").isNotNull())
+        await loop.run_in_executor(None, lambda: df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(self.table_path))
         logging.info(f"Tabla actualizada con datos de {url}")
+        os.remove(local_csv_path)
 
 # Configurar herramientas y agente
 local_table_path = "./delta_movies"
@@ -87,25 +97,11 @@ agent = Agent(
     markdown=True,
     show_tool_calls=True,
     additional_context=dedent("""\
-    You have access to a Delta Lake table called 'movies', stored locally in ./delta_movies.
-    This table contains IMDB movie data with columns like 'Title', 'Rating', 'Runtime_Minutes', etc.
-    Column names have been cleaned (e.g., 'Runtime (Minutes)' is now 'Runtime_Minutes').
-    Use the 'query' tool to execute SQL queries directly on this table and return the results in Markdown format.
-    When asked to provide data (e.g., averages or lists), ALWAYS execute the appropriate SQL query using the 'query' tool and return the actual result in Markdown format.
-    Do NOT invent or guess results; always use the 'query' tool to get real data from the table.
-    Examples:
-    - If asked "What is the average rating?", execute "SELECT AVG(Rating) AS Average_Rating FROM movies" and return "| Average_Rating | 6.35 |" (with the real value).
-    - If asked "List the top 5 movies by rating", execute "SELECT Title, Rating FROM movies ORDER BY Rating DESC LIMIT 5" and return a Markdown table with the actual titles and ratings, like:
-      ```
-      | Title                | Rating |
-      |----------------------|--------|
-      | The Dark Knight      | 9.0    |
-      | Inception            | 8.8    |
-      | Interstellar         | 8.6    |
-      | The Empire Strikes Back | 8.7 |
-      | The Matrix           | 8.7    |
-      ```
-    Do not describe the query without executing it; always show the real results from the table.
+    You have a Delta Lake table at ./delta_movies with IMDB data (columns: Title, Rating, Year, etc.).
+    Rating is a numeric column (1-10). Use the 'query' tool for all data requests and return its Markdown result.
+    - "What is the average rating?": Call 'query' with "SELECT AVG(Rating) AS Average_Rating FROM default.movies".
+    - "List the top 5 movies by rating": Call 'query' with "SELECT Title, Rating FROM default.movies ORDER BY Rating DESC LIMIT 5".
+    Do NOT invent data or skip the tool. Return only the Markdown table from 'query'.
     """),
 )
 
@@ -117,6 +113,11 @@ async def run_local_operations():
     await delta_tools.update_table("https://agno-public.s3.amazonaws.com/demo_data/IMDB-Movie-Data.csv")
     print("\nConsulta tras actualización:")
     await agent.aprint_response("List the top 5 movies by rating.")
+    print("\nVerificación manual:")
+    result_avg = await delta_tools.query("SELECT AVG(Rating) AS Average_Rating FROM default.movies")
+    print("Promedio manual:", result_avg)
+    result_top5 = await delta_tools.query("SELECT Title, Rating FROM default.movies ORDER BY Rating DESC LIMIT 5")
+    print("Top 5 manual:", result_top5)
 
 # Ejecutar el flujo
 asyncio.run(run_local_operations())
