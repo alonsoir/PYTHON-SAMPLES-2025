@@ -1,126 +1,146 @@
-import asyncio
 import os
-from textwrap import dedent
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
-from agno.agent import Agent
-from agno.models.openai import OpenAIChat
 import requests
 from dotenv import load_dotenv
-import logging
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+from agno.agent.agent import Agent
+from agno.tools.toolkit import Toolkit
+from agno.models.openai.chat import OpenAIChat
+import pandas as pd
+import asyncio
+from textwrap import dedent
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# Cargar API key
+# Cargar variables de entorno
 load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    logging.error("El token de OpenAI no está configurado.")
-    raise ValueError("El token de OpenAI no está configurado.")
 
-# Configurar Spark con soporte para Delta Lake en local
-spark = SparkSession.builder \
-    .appName("LocalDeltaLakeAgent") \
-    .master("local[*]") \
-    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
-    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-    .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.3.0") \
-    .config("spark.driver.host", "127.0.0.1") \
-    .config("spark.driver.bindAddress", "127.0.0.1") \
-    .config("spark.delta.logRetentionDuration", "interval 7 days") \
-    .config("spark.delta.deletedFileRetentionDuration", "interval 7 days") \
-    .getOrCreate()
+# Configurar Spark para Delta Lake
+def create_spark_session():
+    try:
+        spark = (
+            SparkSession.builder
+            .appName("DeltaLakeDemo")
+            .master("local[*]")
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+            .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.3.0")  # Delta Lake 3.3.0
+            .config("spark.driver.host", "127.0.0.1")  # Forzar uso de localhost
+            .config("spark.driver.bindAddress", "127.0.0.1")  # Evitar conflictos de red
+            .config("spark.driver.port", "7077")  # Puerto fijo para el driver
+            .getOrCreate()
+        )
+        print("SparkContext inicializado correctamente")
+        return spark
+    except Exception as e:
+        print(f"Error inicializando Spark: {e}")
+        raise
 
-# Herramienta personalizada para Delta Lake local
-class DeltaLakeTools:
+spark = create_spark_session()
+
+class DeltaLakeTools(Toolkit):
     def __init__(self, table_path):
+        super().__init__(name="delta_lake_tools")
         self.table_path = table_path
         if not os.path.exists(table_path):
             os.makedirs(table_path)
+        self.register(self.query)
 
-    def initialize_from_remote_csv(self, url):
-        local_csv_path = "temp_movies.csv"
-        response = requests.get(url)
-        with open(local_csv_path, "wb") as f:
-            f.write(response.content)
-        df = spark.read.option("header", "true").csv(local_csv_path)
-        # Inspeccionar columnas originales
-        original_columns = df.columns
-        logging.info(f"Columnas originales del CSV: {original_columns}")
-        # Definir columnas esperadas
-        expected_columns = ["Rank", "Title", "Genre", "Description", "Director", "Actors", "Year", "Runtime_Minutes", "Rating", "Votes", "Revenue_Millions", "Metascore"]
-        if len(original_columns) != len(expected_columns):
-            logging.warning(f"El número de columnas no coincide. Original: {len(original_columns)}, Esperado: {len(expected_columns)}")
-        df = df.toDF(*expected_columns[:len(original_columns)])
-        df = df.withColumn("Rating", col("Rating").cast("float")).filter(col("Rating").isNotNull())
-        df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(self.table_path)
-        logging.info(f"Tabla Delta inicializada en {self.table_path} con datos de {url}")
-        os.remove(local_csv_path)
+    def load_data_from_csv(self, url):
+        try:
+            # Descargar CSV
+            response = requests.get(url)
+            local_csv_path = "temp_movies.csv"
+            with open(local_csv_path, "wb") as f:
+                f.write(response.content)
 
-    async def query(self, sql_query):
-        """Ejecutar consulta sobre la tabla Delta y devolver resultados en Markdown"""
-        logging.info(f"Ejecutando consulta: {sql_query}")
-        loop = asyncio.get_event_loop()
-        df = spark.read.format("delta").load(self.table_path)
-        if "AVG" in sql_query.upper():
-            result = df.agg({"Rating": "avg"}).toPandas().to_markdown()
-        else:
-            result = df.orderBy(df.Rating.desc()).limit(5).select("Title", "Rating").toPandas().to_markdown()
-        logging.info(f"Resultado de la consulta: {result}")
-        return result
+            # Leer CSV con manejo de comillas
+            df = spark.read.option("header", "true").option("quote", "\"").csv(local_csv_path)
+            
+            # Inspeccionar datos crudos
+            print("Datos crudos:")
+            df.show(5, truncate=False)
+            
+            # Renombrar columnas problemáticas
+            df = df.withColumnRenamed("Runtime (Minutes)", "Runtime_Minutes") \
+                   .withColumnRenamed("Revenue (Millions)", "Revenue_Millions")
+            
+            # Inspeccionar después de renombrar
+            print("Columnas después de renombrar:", df.columns)
+            
+            # Castear columnas a tipos adecuados
+            df = (
+                df.withColumn("Rating", col("Rating").cast("float"))
+                .withColumn("Year", col("Year").cast("int"))
+                .withColumn("Runtime_Minutes", col("Runtime_Minutes").cast("float"))
+                .withColumn("Revenue_Millions", col("Revenue_Millions").cast("float"))
+                .filter(col("Rating").isNotNull())
+            )
+            
+            # Inspeccionar después de transformaciones
+            print("Datos transformados:")
+            df.show(5, truncate=False)
+            df.printSchema()
+            
+            # Guardar como Delta Lake
+            df.write.format("delta").mode("overwrite").save(self.table_path)
+            os.remove(local_csv_path)
+            print(f"Datos cargados en: {self.table_path}")
+        except Exception as e:
+            print(f"Error cargando datos: {e}")
 
-    async def update_table(self, url):
-        loop = asyncio.get_event_loop()
-        local_csv_path = "temp_movies.csv"
-        response = requests.get(url)
-        with open(local_csv_path, "wb") as f:
-            f.write(response.content)
-        df = spark.read.option("header", "true").csv(local_csv_path)
-        original_columns = df.columns
-        logging.info(f"Columnas originales del CSV (actualización): {original_columns}")
-        expected_columns = ["Rank", "Title", "Genre", "Description", "Director", "Actors", "Year", "Runtime_Minutes", "Rating", "Votes", "Revenue_Millions", "Metascore"]
-        df = df.toDF(*expected_columns[:len(original_columns)])
-        df = df.withColumn("Rating", col("Rating").cast("float")).filter(col("Rating").isNotNull())
-        await loop.run_in_executor(None, lambda: df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(self.table_path))
-        logging.info(f"Tabla actualizada con datos de {url}")
-        os.remove(local_csv_path)
+    def query(self, sql_query: str) -> str:
+        """
+        Ejecutar una consulta SQL contra la tabla Delta Lake local.
+        
+        Args:
+            sql_query (str): Consulta SQL a ejecutar.
+        Returns:
+            str: Resultados en formato Markdown.
+        """
+        try:
+            df = spark.read.format("delta").load(self.table_path)
+            df.createOrReplaceTempView("movies")
+            result_df = spark.sql(sql_query)
+            return result_df.toPandas().to_markdown(index=False)
+        except Exception as e:
+            return f"Error: {e}"
 
-# Configurar herramientas y agente
-local_table_path = "./delta_movies"
-delta_tools = DeltaLakeTools(table_path=local_table_path)
-delta_tools.initialize_from_remote_csv("https://agno-public.s3.amazonaws.com/demo_data/IMDB-Movie-Data.csv")
+async def main():
+    # Configurar Delta Lake
+    table_path = "./delta_movies_demo"
+    delta_tools = DeltaLakeTools(table_path)
+    
+    # Cargar datos desde la URL pública
+    url = "https://agno-public.s3.amazonaws.com/demo_data/IMDB-Movie-Data.csv"
+    delta_tools.load_data_from_csv(url)
+    
+    # Configurar agente
+    agent = Agent(
+        model=OpenAIChat(id="gpt-4o", api_key=openai_api_key),
+        tools=[delta_tools],
+        markdown=True,
+        show_tool_calls=True,
+        additional_context=dedent("""\
+        Tienes una tabla Delta Lake con datos de películas de IMDB.
+        Usa la herramienta 'query' para consultar los datos con SQL.
+        Ejemplos:
+        - 'SELECT AVG(Rating) AS PromedioRating FROM movies'
+        - 'SELECT Title, Rating FROM movies ORDER BY Rating DESC LIMIT 5'
+        - 'SELECT Title, Year, Rating FROM movies WHERE Year > 2010 ORDER BY Rating DESC'
+        Solo devuelve los resultados en Markdown.
+        """)
+    )
+    
+    # Ejemplos de consultas en lenguaje natural
+    queries = [
+        "¿Cuál es el promedio de rating de las películas?",
+        "Dame las 5 mejores películas por rating",
+        "Muéstrame las mejores películas después del año 2010"
+    ]
+    
+    for query in queries:
+        print(f"\nConsulta: {query}")
+        await agent.aprint_response(query)
 
-agent = Agent(
-    model=OpenAIChat(id="gpt-4o", api_key=openai_api_key),
-    tools=[delta_tools],
-    markdown=True,
-    show_tool_calls=True,
-    additional_context=dedent("""\
-    You have a Delta Lake table at ./delta_movies with IMDB data (columns: Title, Rating, Year, etc.).
-    Rating is a numeric column (1-10). Use the 'query' tool for all data requests and return its Markdown result.
-    - "What is the average rating?": Call 'query' with "SELECT AVG(Rating) AS Average_Rating FROM default.movies".
-    - "List the top 5 movies by rating": Call 'query' with "SELECT Title, Rating FROM default.movies ORDER BY Rating DESC LIMIT 5".
-    Do NOT invent data or skip the tool. Return only the Markdown table from 'query'.
-    """),
-)
-
-# Función para probar consultas y actualizaciones
-async def run_local_operations():
-    print("Consulta inicial:")
-    await agent.aprint_response("What is the average rating of movies?")
-    print("\nActualizando tabla...")
-    await delta_tools.update_table("https://agno-public.s3.amazonaws.com/demo_data/IMDB-Movie-Data.csv")
-    print("\nConsulta tras actualización:")
-    await agent.aprint_response("List the top 5 movies by rating.")
-    print("\nVerificación manual:")
-    result_avg = await delta_tools.query("SELECT AVG(Rating) AS Average_Rating FROM default.movies")
-    print("Promedio manual:", result_avg)
-    result_top5 = await delta_tools.query("SELECT Title, Rating FROM default.movies ORDER BY Rating DESC LIMIT 5")
-    print("Top 5 manual:", result_top5)
-
-# Ejecutar el flujo
-asyncio.run(run_local_operations())
-
-# Cerrar la sesión de Spark
-spark.stop()
+if __name__ == "__main__":
+    asyncio.run(main())
