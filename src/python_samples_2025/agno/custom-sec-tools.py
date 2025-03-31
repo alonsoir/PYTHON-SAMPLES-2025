@@ -1,18 +1,18 @@
-from typing import List, Optional
+import argparse
+import datetime
+import json
+import os
+import re
+import subprocess
 from textwrap import dedent
+from typing import List, Optional
+
 from agno.agent.agent import Agent
 from agno.models.openai.chat import OpenAIChat
 from agno.tools.toolkit import Toolkit
 from agno.utils.log import logger
 from dotenv import load_dotenv
 from libnmap.parser import NmapParser
-import os
-import subprocess
-import datetime
-import json
-import re
-import argparse
-
 load_dotenv()
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -67,7 +67,6 @@ class NmapAgent(Toolkit):
     def run(self, timeout: int = 300) -> dict:
         """Ejecuta Nmap y procesa los resultados usando python-libnmap."""
         logger.info(f"[+] Ejecutando Nmap en {target}...")
-        logger.info(f"Current PATH: {os.environ['PATH']}")
         command = ["nmap", "-sV", "--script=vuln", "-oX", "nmap_results.xml", target]
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
@@ -75,8 +74,9 @@ class NmapAgent(Toolkit):
                 logger.error(f"[!] Error en Nmap: {result.stderr}")
                 return {"error": f"Error running Nmap: {result.stderr}"}
             logger.info("[+] Nmap ejecutado con éxito.")
-            # Parsear el archivo XML con python-libnmap
+            # Parsear el archivo XML
             report = NmapParser.parse_fromfile("nmap_results.xml")
+            # Construir el diccionario nmap_data
             nmap_data = {
                 "hosts": [
                     {
@@ -85,8 +85,8 @@ class NmapAgent(Toolkit):
                             str(service.port): {
                                 "state": service.state,
                                 "service": service.service if service.service else "unknown",
-                                "version": service.version if service.version else None
-                            } for service in host.services  # Usamos host.services en lugar de get_open_ports()
+                                "version": getattr(service, "version", None)  # Manejo seguro del atributo version
+                            } for service in host.services
                         }
                     } for host in report.hosts if hasattr(host, 'services') and host.services
                 ]
