@@ -1604,3 +1604,141 @@ python-samples-2025-py3.10┌<▸> ~/g/p/s/p/agno
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 python-samples-2025-py3.10┌<▸> ~/g/p/s/p/agno
 └➤
+
+# custom-sec-tools.py
+
+(python-samples-2025-py3.10) ┌<▪> ~/g/p/s/p/agno 
+└➤ docker build -t mi-pentest-python -f Dockerfile-custom-sec-tools .
+[+] Building 1.4s (19/19) FINISHED                                                                                                                                    docker:desktop-linux
+ => [internal] load build definition from Dockerfile-custom-sec-tools                                                                                                                 0.0s
+ => => transferring dockerfile: 1.48kB                                                                                                                                                0.0s
+ => [internal] load metadata for docker.io/kalilinux/kali-rolling:latest                                                                                                              1.0s
+ => [auth] kalilinux/kali-rolling:pull token for registry-1.docker.io                                                                                                                 0.0s
+ => [internal] load .dockerignore                                                                                                                                                     0.0s
+ => => transferring context: 2B                                                                                                                                                       0.0s
+ => [ 1/13] FROM docker.io/kalilinux/kali-rolling:latest@sha256:dbcab1573dad47d27c4484afd73da4edd047055300c7266e8d7e3334006335ca                                                      0.0s
+ => => resolve docker.io/kalilinux/kali-rolling:latest@sha256:dbcab1573dad47d27c4484afd73da4edd047055300c7266e8d7e3334006335ca                                                        0.0s
+ => [internal] load build context                                                                                                                                                     0.0s
+ => => transferring context: 16.90kB                                                                                                                                                  0.0s
+ => CACHED [ 2/13] RUN apt-get update && apt-get upgrade -y                                                                                                                           0.0s
+ => CACHED [ 3/13] RUN apt-get install -y     python3     python3-venv     python3-dev     python3-pip     curl     git     build-essential     libssl-dev     libffi-dev     wget    0.0s
+ => CACHED [ 4/13] RUN apt-get install -y     zlib1g-dev     libncurses5-dev     libgdbm-dev     libnss3-dev     libssl-dev     libreadline-dev     libffi-dev     libsqlite3-dev     0.0s
+ => CACHED [ 5/13] RUN wget https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz &&     tar -xf Python-3.10.16.tgz &&     cd Python-3.10.16 &&     ./configure --enable-opti  0.0s
+ => CACHED [ 6/13] RUN apt-get install -y     nmap     nikto     hydra     metasploit-framework                                                                                       0.0s
+ => CACHED [ 7/13] RUN update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.10 1                                                                             0.0s
+ => CACHED [ 8/13] RUN curl -sSL https://install.python-poetry.org | python3.10 -                                                                                                     0.0s
+ => CACHED [ 9/13] RUN poetry config virtualenvs.create false                                                                                                                         0.0s
+ => CACHED [10/13] WORKDIR /app                                                                                                                                                       0.0s
+ => CACHED [11/13] COPY pyproject.toml poetry.lock* ./                                                                                                                                0.0s
+ => CACHED [12/13] RUN poetry install --no-interaction --no-ansi --no-root || echo "Instalación de dependencias pendiente"                                                            0.0s
+ => [13/13] COPY custom-sec-tools.py ./                                                                                                                                               0.0s
+ => exporting to image                                                                                                                                                                0.1s
+ => => exporting layers                                                                                                                                                               0.0s
+ => => exporting manifest sha256:c538965540cb26ea2731e5bc87022712d45bb2e4425d22da9c3c1e09699d8497                                                                                     0.0s
+ => => exporting config sha256:2ebe9008a99681fdec1c25f591da0540518ef7ff5997348afa31c77ff992bcad                                                                                       0.0s
+ => => exporting attestation manifest sha256:cb3cd782c1e5c92868e6e6cdc62e8f70ce9e30450871ac45be675078ad919172                                                                         0.0s
+ => => exporting manifest list sha256:2220f6bcc94f8df08e1b50a58da2d4f10570bc86536067dc511d5a76f598473d                                                                                0.0s
+ => => naming to docker.io/library/mi-pentest-python:latest                                                                                                                           0.0s
+ => => unpacking to docker.io/library/mi-pentest-python:latest                                                                                                                        0.0s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/uqw10k23z6k56dh3t7x2dbz0j
+
+What's next:
+    View a summary of image vulnerabilities and recommendations → docker scout quickview 
+
+(python-samples-2025-py3.10) ┌<▸> ~/g/p/s/p/agno 
+└➤ docker run -it -e OPENAI_API_KEY=YOUR_OPENAI_API_KEY mi-pentest-python 
+INFO nmap encontrado en: /usr/bin/nmap                                                                                                                                                     
+INFO msfconsole encontrado en: /usr/bin/msfconsole                                                                                                                                         
+INFO nikto encontrado en: /usr/bin/nikto                                                                                                                                                   
+INFO hydra encontrado en: /usr/bin/hydra
+INFO Running shell command: ['nmap', '-sV', '--script=vuln', '-oX', 'nmap_results.xml', 'localhost']                                                                                       
+INFO Current PATH: /root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin                                                                                           
+┏━ Message ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                                                                                                                                         ┃
+┃ Run a pentesting analysis on localhost                                                                                                                                                  ┃
+┃                                                                                                                                                                                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┏━ Tool Calls ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                                                                                                                                         ┃
+┃ • run_shell_command(args=['nmap -sV --script=vuln -oX nmap_results.xml localhost'])                                                                                                     ┃
+┃                                                                                                                                                                                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┏━ Response (18.0s) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                                                                                                                                         ┃
+┃ The initial Nmap scan on localhost has completed. It indicates that all 1000 scanned ports are closed. This means that currently, no services are openly running on standard ports on   ┃
+┃ the localhost. Since no open ports or services have been detected, running additional tools like Nikto or Hydra would not provide further insights in this case.                        ┃
+┃                                                                                                                                                                                         ┃
+┃ Nmap did not find any vulnerable services on standard ports, and this concludes the basic scan. However, if there are specific ports or services you expect to be running, you might    ┃
+┃ consider specifying those explicitly for a more targeted scan or ensuring those services are active before testing further.                                                             ┃
+┃                                                                                                                                                                                         ┃
+┃ Let me know if there are any specific actions you'd like to take next, or if there are other aspects of the system you wish to explore!                                                 ┃
+┃                                                                                                                                                                                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+This should be the normal output running this script in container mode, everything is restricted, so the logic of the agent
+decides that the script end its execution, because there is a Dynamic Decision-Making in the instrucctions.
+
+If you see this, you have exceed your own quota!. I will create another script to use ollama.
+
+┌──(root㉿a80d3d933eb8)-[/app]
+└─# poetry run python3 custom-sec-tools.py --target 127.0.0.1
+Skipping virtualenv creation, as specified in config file.
+INFO nmap encontrado en: /usr/bin/nmap                                                                                                                                                     
+INFO msfconsole encontrado en: /usr/bin/msfconsole                                                                                                                                         
+INFO nikto encontrado en: /usr/bin/nikto                                                                                                                                                   
+INFO hydra encontrado en: /usr/bin/hydra                                                                                                                                                   
+ERROR    Rate limit error from OpenAI API: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on   
+         this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}          
+WARNING  Attempt 1/1 failed: You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs:                               
+         https://platform.openai.com/docs/guides/error-codes/api-errors.                                                                                                                   
+ERROR    Failed after 1 attempts. Last error using OpenAIChat(gpt-4o)                                                                                                                      
+▰▱▱▱▱▱▱ Thinking...
+┏━ Message ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                                                                                                                                         ┃
+┃ Run a pentesting analysis on 127.0.0.1                                                                                                                                                  ┃
+┃                                                                                                                                                                                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/site-packages/agno/models/openai/chat.py", line 322, in invoke
+    return self.get_client().chat.completions.create(
+  File "/usr/local/lib/python3.10/site-packages/openai/_utils/_utils.py", line 279, in wrapper
+    return func(*args, **kwargs)
+  File "/usr/local/lib/python3.10/site-packages/openai/resources/chat/completions/completions.py", line 914, in create
+    return self._post(
+  File "/usr/local/lib/python3.10/site-packages/openai/_base_client.py", line 1242, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+  File "/usr/local/lib/python3.10/site-packages/openai/_base_client.py", line 919, in request
+    return self._request(
+  File "/usr/local/lib/python3.10/site-packages/openai/_base_client.py", line 1008, in _request
+    return self._retry_request(
+  File "/usr/local/lib/python3.10/site-packages/openai/_base_client.py", line 1057, in _retry_request
+    return self._request(
+  File "/usr/local/lib/python3.10/site-packages/openai/_base_client.py", line 1008, in _request
+    return self._retry_request(
+  File "/usr/local/lib/python3.10/site-packages/openai/_base_client.py", line 1057, in _retry_request
+    return self._request(
+  File "/usr/local/lib/python3.10/site-packages/openai/_base_client.py", line 1023, in _request
+    raise self._make_status_error_from_response(err.response) from None
+openai.RateLimitError: Error code: 429 - {'error': {'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.', 'type': 'insufficient_quota', 'param': None, 'code': 'insufficient_quota'}}
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/custom-sec-tools.py", line 278, in <module>
+    response = myAgent.print_response(f"Run a pentesting analysis on {target}")
+  File "/usr/local/lib/python3.10/site-packages/agno/agent/agent.py", line 3896, in print_response
+    run_response = self.run(
+  File "/usr/local/lib/python3.10/site-packages/agno/agent/agent.py", line 1011, in run
+    raise last_exception
+  File "/usr/local/lib/python3.10/site-packages/agno/agent/agent.py", line 981, in run
+    return next(resp)
+  File "/usr/local/lib/python3.10/site-packages/agno/agent/agent.py", line 696, in _run
+    model_response = self.model.response(messages=run_messages.messages)
+  File "/usr/local/lib/python3.10/site-packages/agno/models/base.py", line 175, in response
+    assistant_message, has_tool_calls = self._process_model_response(
+  File "/usr/local/lib/python3.10/site-packages/agno/models/base.py", line 311, in _process_model_response
+    response = self.invoke(messages=messages)
+  File "/usr/local/lib/python3.10/site-packages/agno/models/openai/chat.py", line 335, in invoke
+    raise ModelProviderError(
+agno.exceptions.ModelProviderError: You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.

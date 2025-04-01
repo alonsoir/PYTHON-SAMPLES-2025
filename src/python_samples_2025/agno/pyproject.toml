@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "pentest-agent"
+version = "0.1.0"
+description = "A cybersecurity agent for pentesting"
+authors = ["Alonso Isidoro Román <alonsoir@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"  # Compatible con 3.10.16
+python-dotenv = "^1.0.1"  # Para load_dotenv
+python-libnmap = "^0.7.3"  # Para parsing de Nmap XML
+requests = "^2.32.3"  # Probable dependencia de agno para APIs
+openai = "^1.66.3"  # Para OpenAIChat
+agno = "^1.1.1"  # Última versión estable en PyPI al 01/04/2025
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
