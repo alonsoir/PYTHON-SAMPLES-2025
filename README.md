@@ -424,3 +424,21 @@ Nmap done: 1 IP address (1 host up) scanned in 0.38 seconds
 ¡El servidor de Minecraft está listo! Puedes unirte a través de la URL: tell-app.gl.at.ply.gg:50643
 python-samples-2025-py3.10┌<▸> ~/g/p/s/python_samples_2025
 └➤
+
+He creado una herramienta pentesting cuyo fuente está en src/python_samples_2025/agno/custom-sec-tools.py
+
+Esta herramienta está basada en el framework agno para pentesting, de manera que tú le indicas el target y 
+el agente va a decidir delegar cual herramienta va despues para realizar el pentesting. 
+En mi caso, he creado el script python para que pueda usar nmap, nikto, hydra y metasploit. 
+El script está englobada dentro de una imagen kali linux, por comodidad, ya que esta imagen contiene muchas más 
+herramientas.
+Si ejecutas el script en modo contenedor, dándole como objetivo localhost, encontrará que todo está cerrado 
+y ahí acabará la ejecución, como es normal. 
+
+Ahora mismo usa openAI gpt4o, pero planeo migrarlo a ollama para no quedarme sin tokens.
+
+https://hub.docker.com/repository/docker/aironman/pentest-python/general
+
+docker pull aironman/pentest-python:latest
+
+docker run -it -e OPENAI_API_KEY=YOUR_OPENAI_API_KEY pentest-python:latest --target 127.0.0.1
