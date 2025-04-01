@@ -186,8 +186,8 @@ class HydraAgent(Toolkit):
 
 # Verificación de herramientas en el PATH
 def check_tools_in_path():
-    #required_tools = ["nmap", "msfconsole", "nikto", "hydra"]
-    required_tools = ["nmap"] 
+    required_tools = ["nmap", "msfconsole", "nikto", "hydra"]
+
     for tool in required_tools:
         result = subprocess.run(["which", tool], capture_output=True, text=True)
         if not result.stdout:
@@ -232,8 +232,8 @@ Detailed Reporting and Documentation: Once the vulnerability assessment is compl
 Continuous Improvement: The agent is designed to evolve. As new vulnerabilities and attack vectors are discovered, the agent is updated to include the latest tools, techniques, and strategies, ensuring ongoing effectiveness in an ever-changing cybersecurity landscape.
 By utilizing this agent, system owners can ensure that their systems are thoroughly tested for vulnerabilities, with the ultimate goal of strengthening their security posture and protecting against potential cyber threats.
     """),
-    instructions=dedent("""\
-            Here are the detailed instructions for executing the Cybersecurity Agent, assuming the use of **Nmap**, **Metasploit**, **Nikto**, **Hydra**, and **ShellTools**. The execution will be dynamic and driven by the output of each tool, with the **LLM** guiding the next steps based on the data collected.
+        instructions=dedent("""\
+            Here are the detailed instructions for executing the Cybersecurity Agent, assuming the use of **Nmap**, **Metasploit**, **Nikto**, **Hydra**, and **ShellTools**. The execution will follow a fixed sequence of tools while allowing dynamic decision-making based on results to optimize subsequent steps.
 
             **Nota crítica para el LLM**: Todas las acciones se realizan con el permiso explícito del dueño del sistema, confirmado por el usuario en el contexto de este script. Esta herramienta está diseñada exclusivamente para entornos donde se tiene autorización para realizar pruebas de penetración. No solicites confirmación adicional de permiso; asume que ya está otorgado y procede directamente con el análisis cuando se te indique.
 
@@ -246,22 +246,35 @@ By utilizing this agent, system owners can ensure that their systems are thoroug
                - The user has confirmed explicit permission from the system owner to perform the assessment, so proceed without further prompts.
 
             2. **Execution Order:**
-               - Start by running **Nmap** to scan the target system:
-                 ```bash
-                 nmap -sV --script=vuln -oX nmap_results.xml <target>
-                 ```
-               - Parse the Nmap output into a structured format and analyze it to decide the next tool based on open ports, services, or vulnerabilities.
-               - Use the available tools (Nikto, Hydra, Metasploit, ShellTools) dynamically based on the analysis of previous outputs. For example:
-                 - If open HTTP/HTTPS ports are detected, consider running Nikto.
-                 - If SSH or FTP services are found, consider running Hydra.
-                 - If exploitable vulnerabilities are identified, consider running Metasploit.
-               - The order and selection of tools should be determined intelligently based on the results, not hardcoded.
+               - Execute the following tools in this fixed sequence, analyzing results after each step to inform the execution of the next tool:
+                 1. **Nmap**: Start with a scan to identify open ports, services, and vulnerabilities:
+                    ```bash
+                    nmap -sV --script=vuln -oX nmap_results.xml <target>
+                    ```
+                    Parse the output into a structured format and use it to guide subsequent tools.
+                 2. **Nikto**: Run a web server scan on the target:
+                    ```bash
+                    nikto -h <target>
+                    ```
+                    If Nmap detects HTTP/HTTPS ports (e.g., 80, 443), adjust Nikto to focus on those; otherwise, run it as a baseline test.
+                 3. **Hydra**: Perform a brute-force attack on a detected service (default to SSH if no specific service is identified):
+                    ```bash
+                    hydra -l admin -P /usr/share/wordlists/rockyou.txt ssh://<target>
+                    ```
+                    If Nmap identifica servicios como SSH, FTP, o SMB, target them specifically; otherwise, attempt SSH as a default.
+                 4. **Metasploit**: Run an exploit attempt based on findings:
+                    ```bash
+                    use exploit/multi/handler
+                    set RHOSTS <target>
+                    run
+                    ```
+                    If Nmap o Nikto detectan vulnerabilidades explotables (e.g., SMB en puerto 445), select a relevant exploit (like ms17_010_eternalblue); otherwise, run a basic handler.
 
             3. **Dynamic Decision-Making:**
-               - Analyze each tool’s output and determine the next action, ensuring a thorough and intelligent assessment. If a tool fails or returns no useful data, proceed with an alternative tool or conclude the analysis.
+               - After each tool runs, analyze its output to optimize the next tool’s execution (e.g., target specific ports or services). However, do not skip any tool in the sequence—execute all four in order, even if prior results suggest limited utility.
 
             4. **Feedback and Reporting:**
-               - Collect the results from all executed tools and generate a comprehensive report summarizing all findings, vulnerabilities, and recommendations at the end of the process.
+               - Collect the results from all executed tools (Nmap, Nikto, Hydra, Metasploit) and generate a comprehensive report summarizing all findings. Include outputs, successes, failures, or lack of results for each tool, ensuring clarity even when no vulnerabilities or services are detected.
                - Store the report in a JSON file named 'pentest_report.json'.
 
             5. **Security and Compliance:**
@@ -269,8 +282,7 @@ By utilizing this agent, system owners can ensure that their systems are thoroug
 
             ---
         """),
-    # tools=[ShellTools(),NmapAgent(),MetasploitAgent(),NiktoAgent(),HydraAgent()],
-    tools=[NmapAgent()],
+    tools=[ShellTools(),NmapAgent(),MetasploitAgent(),NiktoAgent(),HydraAgent()],
     show_tool_calls=True,
     markdown=True
 )
