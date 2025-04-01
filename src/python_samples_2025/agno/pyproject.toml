@@ -12,6 +12,7 @@ python-libnmap = "^0.7.3"  # Para parsing de Nmap XML
 requests = "^2.32.3"  # Probable dependencia de agno para APIs
 openai = "^1.66.3"  # Para OpenAIChat
 agno = "^1.1.1"  # Última versión estable en PyPI al 01/04/2025
+ollama = "^0.4.7"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -1742,3 +1742,10 @@ Traceback (most recent call last):
   File "/usr/local/lib/python3.10/site-packages/agno/models/openai/chat.py", line 335, in invoke
     raise ModelProviderError(
 agno.exceptions.ModelProviderError: You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.
+
+Para tratar de circumvenir estos problemas de quotas, creo que lo mejor es tratar de ejecutar ollama en local. 
+He creado un script, custom-sec-tools-ollama.py que usa ollama, y tiene que usar por defecto un LLM que permita 
+function calling, por lo que, mientras hago una busqueda de llm que lo permitan, me quedaré con llama3.2
+
+Por ahora está a fuego, He creado un Dockerfile-custom-sect-tools-ollama, falta por crear un docker-compose que 
+ponga todo junto. Pendiente.
