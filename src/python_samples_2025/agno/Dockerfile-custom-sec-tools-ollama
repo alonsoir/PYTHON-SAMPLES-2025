@@ -2,9 +2,9 @@ FROM kalilinux/kali-rolling
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get upgrade -y
-
-RUN apt-get install -y \
+# Actualizar e instalar dependencias base
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y \
     python3 \
     python3-venv \
     python3-dev \
@@ -15,19 +15,21 @@ RUN apt-get install -y \
     libssl-dev \
     libffi-dev \
     wget \
-    gnupg
-
-RUN apt-get install -y \
+    gnupg \
     zlib1g-dev \
     libncurses5-dev \
     libgdbm-dev \
     libnss3-dev \
-    libssl-dev \
     libreadline-dev \
-    libffi-dev \
     libsqlite3-dev \
-    libbz2-dev
+    libbz2-dev \
+    nmap \
+    nikto \
+    hydra \
+    metasploit-framework && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Instalar Python 3.10 desde fuente
 RUN wget https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz && \
     tar -xf Python-3.10.16.tgz && \
     cd Python-3.10.16 && \
@@ -36,24 +38,28 @@ RUN wget https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz && \
     make altinstall && \
     cd .. && \
     rm -rf Python-3.10.16 Python-3.10.16.tgz && \
-    ln -sf /usr/local/bin/python3.10 /usr/bin/python3.10
+    ln -sf /usr/local/bin/python3.10 /usr/bin/python3
 
-RUN apt-get install -y \
-    nmap \
-    nikto \
-    hydra \
-    metasploit-framework
-
+# Configurar Python 3.10 como predeterminado
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.10 1
 
-RUN curl -sSL https://install.python-poetry.org | python3.10 -
-ENV PATH="/root/.local/bin:$PATH"
+# Instalar Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 - && \
+    ln -sf /root/.local/bin/poetry /usr/local/bin/poetry
+ENV PATH="/usr/local/bin:$PATH"
 
+# Configurar Poetry para no crear entornos virtuales
 RUN poetry config virtualenvs.create false
 
+# Establecer directorio de trabajo
 WORKDIR /app
 
+# Copiar archivos de dependencias e instalarlas
 COPY pyproject.toml poetry.lock* ./
-RUN poetry install --no-interaction --no-ansi --no-root || echo "Instalación de dependencias pendiente"
+RUN poetry install --no-interaction --no-ansi || echo "Error al instalar dependencias, revisa pyproject.toml"
+
+# Copiar el script
 COPY custom-sec-tools-ollama.py ./
+
+# Comando por defecto
 CMD ["python3", "custom-sec-tools-ollama.py"]

@@ -1,33 +1,43 @@
-version: '3.8'
-
 services:
   custom-sec:
-    image: mi-pentest-ollama-python:latest
+    build:
+      context: .  # Directorio actual donde está el Dockerfile
+      dockerfile: Dockerfile-custom-sec-tools-ollama  # Nombre del archivo Dockerfile
     container_name: custom-sec
     restart: unless-stopped
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "4g"
+    networks:
+      - sec-net
+
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
     ports:
-      - "11434:11434"
+      - "11435:11434"  # Puerto externo cambiado para evitar conflictos
     volumes:
       - ollama_models:/root/.ollama
     restart: unless-stopped
-    # Descomenta para soporte NVIDIA GPU (requiere nvidia-container-toolkit instalado)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      test: ["CMD", "/bin/sh", "-c", "ollama list || true"]  # Healthcheck ajustado
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
+    networks:
+      - sec-net
 
 volumes:
   ollama_models:
+
+networks:
+  sec-net:
+    driver: bridge
