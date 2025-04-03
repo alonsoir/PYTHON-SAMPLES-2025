@@ -21,7 +21,7 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
 
 class OllamaAgent(Agent):
-    def __init__(self, model="mistral", description=None, instructions=None, tools=None, show_tool_calls=False,
+    def __init__(self, model="llama3.2:1b", description=None, instructions=None, tools=None, show_tool_calls=False,
                  markdown=False, **kwargs):
         super().__init__(description=description, instructions=instructions, tools=tools,
                          show_tool_calls=show_tool_calls, markdown=markdown, **kwargs)
@@ -30,10 +30,17 @@ class OllamaAgent(Agent):
         print(f"model is {self.model}")
 
     def run(self, message: str, **kwargs) -> str:
+        print(f"[+] Running OllamaAgent {self.model}")
+
         payload = {
             "model": self.model,
             "prompt": message,
-            "stream": False
+            "stream": False,
+            "options": {
+                "num_ctx": 2048,  # Reduce el contexto
+                "num_batch": 512,  # Reduce el batch size
+                "num_thread": 2,  # Usa solo 2 hilos
+            }
         }
         try:
             response = requests.post(self.ollama_url, json=payload)
@@ -153,26 +160,28 @@ class ShellTools(Toolkit):
 
 class NmapAgent(Toolkit):
     def __init__(self):
-        super().__init__(name="Nmap Agent")
+        super().__init__(name="NmapAgent")  # Cambié "Nmap Agent" a "NmapAgent" por consistencia con otros nombres
         self.register(self.run)
 
     def run(self, **kwargs) -> dict:
-        """Ejecuta Nmap y procesa los resultados usando python-libnmap."""
-        # Extraer parámetros específicos de kwargs
         target = kwargs.get('target', 'localhost')
-        timeout = kwargs.get('timeout', 300)
+        timeout = kwargs.get('timeout', 600)
+        # command = ["nmap", "-sV", "--script=vuln", "-oX", "nmap_results.xml", target]
+        # por debug
+        # command = ["nmap", "-sV", "-oX", "nmap_results.xml", target]
+        command = ["nmap", "-sV", "-p", "22,80", "-oX", "nmap_results.xml", target]  # Solo puertos 22 y 80
 
-        logger.info(f"[+] Ejecutando Nmap en {target}...")
-        command = ["nmap", "-sV", "--script=vuln", "-oX", "nmap_results.xml", target]
+        print(f"\n[+] Running: {' '.join(command)}")
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-            if result.returncode != 0:
-                logger.error(f"[!] Error en Nmap: {result.stderr}")
-                return {"error": f"Error running Nmap: {result.stderr}"}
-            logger.info("[+] Nmap ejecutado con éxito.")
-            # Parsear el archivo XML
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, stderr = process.communicate(timeout=timeout)
+            print(stdout)
+            if process.returncode != 0:
+                print(f"[-] Error: {stderr}")
+                logger.error(f"[!] Error running Nmap: {stderr}")
+                return {"error": f"Error running Nmap: {stderr}"}
+            logger.info("[+] Nmap executed successfully.")
             report = NmapParser.parse_fromfile("nmap_results.xml")
-            # Construir el diccionario nmap_data
             nmap_data = {
                 "hosts": [
                     {
@@ -181,22 +190,25 @@ class NmapAgent(Toolkit):
                             str(service.port): {
                                 "state": service.state,
                                 "service": service.service if service.service else "unknown",
-                                "version": getattr(service, "version", None)  # Manejo seguro del atributo version
+                                "version": getattr(service, "version", None)
                             } for service in host.services
                         }
                     } for host in report.hosts if hasattr(host, 'services') and host.services
                 ]
             }
-            # Convertimos el diccionario a string JSON para cumplir con el framework
+            print(f"[+] Parsed Nmap result:\n{json.dumps(nmap_data, indent=2)}")
             return json.dumps(nmap_data)
         except subprocess.TimeoutExpired:
-            logger.error(f"[!] Timeout ({timeout}s) al ejecutar Nmap.")
+            logger.error(f"[!] Timeout ({timeout}s) during Nmap execution.")
+            print(f"[-] Timeout after {timeout}s")
             return {"error": "Timeout during Nmap execution"}
         except FileNotFoundError as e:
-            logger.error(f"[!] Nmap no encontrado: {e}")
+            logger.error(f"[!] Nmap not found: {e}")
+            print(f"[-] Error: {e}")
             return {"error": f"Nmap not found - {e}"}
         except Exception as e:
-            logger.error(f"[!] Error en Nmap: {e}")
+            logger.error(f"[!] Error processing Nmap results: {e}")
+            print(f"[-] Error: {e}")
             return {"error": f"Error processing Nmap results: {str(e)}"}
 
 
@@ -204,37 +216,81 @@ class MetasploitAgent(Toolkit):
     def __init__(self):
         super().__init__(name="MetasploitAgent")
         self.register(self.run)
+        self.ollama_agent = OllamaAgent(
+            model="llama3.2:1b",
+            description="Helper agent to generate Metasploit commands",
+            instructions=dedent("""\
+                You are a Metasploit expert. Given Nmap scan results (ports, services, versions),
+                generate a Metasploit script (.rc file content) with:
+                1. A list of relevant exploits to try based on the open ports and services.
+                2. For each exploit, include 'use', 'set RHOSTS', and 'run' commands.
+                3. Prioritize exploits by likelihood of success (e.g., well-known vulnerabilities first).
+                4. If no specific exploits match, suggest a generic payload like 'multi/handler'.
+                Return the script as a single string with commands separated by newlines.
+                Do not invent data; base your suggestions only on the provided Nmap results.
+            """)
+        )
 
     def run(self, **kwargs) -> str:
-        """Ejecuta Metasploit con comandos generados dinámicamente."""
+        """Ejecuta Metasploit con comandos generados dinámicamente por el LLM."""
         target = kwargs.get('target', 'localhost')
-        nmap_data = kwargs.get('nmap_data')
+        nmap_data_raw = kwargs.get('nmap_data')  # JSON string from NmapAgent
         timeout = kwargs.get('timeout', 300)
+        print(f"\n [+] Running MetasploitAgent ")
+        print(f"\n [+] target is {target}")
+        print(f"\n [+] nmap_data_raw is {nmap_data_raw}")
+        print(f"\n [+] timeout is {timeout}")
+        # Validar y parsear nmap_data
+        if not nmap_data_raw:
+            logger.error("[!] No nmap_data provided.")
+            return "Error: No Nmap data available"
+        try:
+            nmap_data = json.loads(nmap_data_raw) if isinstance(nmap_data_raw, str) else nmap_data_raw
+            if not isinstance(nmap_data, dict):
+                raise ValueError("nmap_data must be a dictionary")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"[!] Invalid nmap_data: {e}")
+            return f"Error: Invalid Nmap data - {e}"
 
-        commands = "use exploit/multi/handler\n"
-        if nmap_data and isinstance(nmap_data, dict):
-            for host in nmap_data["hosts"]:
-                if "445" in host.get("ports", {}):
-                    commands += "use exploit/windows/smb/ms17_010_eternalblue\n"
-                    commands += f"set RHOSTS {target}\n"
-                    commands += "run\n"
-                    break
-        logger.info(f"[+] Ejecutando Metasploit con comandos:\n{commands}")
+        # Mostrar datos de entrada para depuración
+        print(f"[+] Nmap Data recibido:\n{json.dumps(nmap_data, indent=2)}")
+
+        # Consultar al LLM para generar el script de Metasploit
+        prompt = f"Generate a Metasploit script based on this Nmap data following strict instrucctions given to {self.ollama_agent}:\n{json.dumps(nmap_data, indent=2)}"
+        commands = self.ollama_agent.run(prompt)
+        if "Error" in commands:
+            logger.error(f"[!] Failed to generate Metasploit commands: {commands}")
+            return commands
+
+        # Mostrar el script generado
+        print(f"\n[+] Script de Metasploit generado por el LLM:\n{commands}")
+
+        # Guardar y ejecutar el script
         try:
             with open("msf_script.rc", "w") as f:
                 f.write(commands)
-            result = subprocess.run(["msfconsole", "-r", "msf_script.rc"], capture_output=True, text=True,
-                                    timeout=timeout)
-            if result.returncode != 0:
-                logger.error(f"[!] Error en Metasploit: {result.stderr}")
-                return f"Error: {result.stderr}"
+            print(f"\n[+] Ejecutando: msfconsole -r msf_script.rc")
+            process = subprocess.Popen(
+                ["msfconsole", "-r", "msf_script.rc"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            stdout, stderr = process.communicate(timeout=timeout)
+            print(stdout)  # Mostrar salida en tiempo real
+            if process.returncode != 0:
+                print(f"[-] Error: {stderr}")
+                logger.error(f"[!] Error en Metasploit: {stderr}")
+                return f"Error: {stderr}"
             logger.info("[+] Metasploit ejecutado con éxito.")
-            return result.stdout if result.stdout else "No output"
+            return stdout if stdout else "No output"
         except subprocess.TimeoutExpired:
             logger.error(f"[!] Timeout ({timeout}s) al ejecutar Metasploit.")
+            print(f"[-] Timeout tras {timeout}s")
             return "Timeout"
         except Exception as e:
             logger.error(f"[!] Error en Metasploit: {e}")
+            print(f"[-] Error: {e}")
             return f"Error: {e}"
 
 
@@ -333,7 +389,7 @@ except ImportError:
 if __name__ == "__main__":
     wait_for_ollama()
     models = list_ollama_models()
-    selected_model = "llama3.2:latest"
+    selected_model = "llama3.2:1b"
     if selected_model not in models:
         print(
             f"Modelo {selected_model} no encontrado. Descargue con 'docker exec ollama ollama pull {selected_model}'.")
@@ -342,7 +398,28 @@ if __name__ == "__main__":
 
     # Asegurar que rockyou.txt esté disponible
     wordlist_path = ensure_wordlist()
+    parser = argparse.ArgumentParser(description="Cybersecurity Agent based in Ollama for pentesting")
+    parser.add_argument("--target", default="scanme.nmap.org", help="Target IP or hostname")
+    args = parser.parse_args()
+    target = args.target
 
+    if not re.match(r'^[a-zA-Z0-9\.\-_:]+$', target):
+        raise ValueError("Invalid target format")
+
+    # Ejecutar NmapAgent directamente para depuración
+    nmap_agent = NmapAgent()
+    nmap_result = nmap_agent.run(target=target)
+    print(f"Nmap Result: {nmap_result}")
+    # Pasar el resultado a MetasploitAgent
+    metasploit_agent = MetasploitAgent()
+    metasploit_result = metasploit_agent.run(target=target, nmap_data=nmap_result)
+    print(f"Metasploit Result: {metasploit_result}")
+
+    # Mantener el contenedor vivo
+    print("Análisis inicial completado. Manteniendo el contenedor vivo...")
+    while True:
+        time.sleep(60)
+    '''    
     agent = Agent(
         model=Ollama(id=selected_model, client=OllamaClient(host=OLLAMA_HOST)),
         description=dedent("""\
@@ -359,28 +436,20 @@ if __name__ == "__main__":
                                 By utilizing this agent, system owners can ensure that their systems are thoroughly tested for vulnerabilities, with the ultimate goal of strengthening their security posture and protecting against potential cyber threats.
                                     """),
         instructions=dedent(f"""\
-                    You are a pentesting agent with explicit permission from the system owner, corporation, or company that has hired us to perform a security assessment on the specified target. Your task is to execute a pentesting analysis using only the following tools available in your toolkit: ShellTools, NmapAgent, MetasploitAgent, NiktoAgent, and HydraAgent. Do NOT fetch data from the internet or invent outputs; use only the real outputs from these tools executed within the container.
-
-                    For each target provided:
-                    1. Start with NmapAgent to scan the target for open ports, services, and vulnerabilities. Choose the most appropriate Nmap command based on the context (e.g., basic scan, version detection, or vuln scripts).
-                    2. Use NiktoAgent to scan for web server vulnerabilities if a web service is detected in the Nmap output. Select a suitable Nikto command based on Nmap findings.
-                    3. Use HydraAgent to attempt a brute-force attack on any detected services (e.g., SSH, HTTP) using the wordlist at '{wordlist_path}'. Suggest the best command based on the services found.
-                    4. Use MetasploitAgent to attempt exploitation of vulnerabilities identified by Nmap or Nikto. Choose an appropriate exploit and configuration based on the outputs.
-                    5. Use ShellTools if additional custom commands are needed to refine the analysis.
-
-                    Execute each tool in sequence, analyze its output, and dynamically suggest and run the best command for the next tool based on the previous results. Include the actual output of each tool in your response, along with a summary of findings. Do not hardcode specific commands in your response; let your reasoning determine the commands dynamically."""),
+            You are a pentesting agent with permission to analyze {target}.
+            1. Execute NmapAgent.run(target='{target}') and show its real output.
+            2. Pass the Nmap output to MetasploitAgent.run(target='{target}', nmap_data=<nmap_output>) to generate and run a dynamic Metasploit script.
+            3. Show the real output of each tool and use it to decide the next step (e.g., NiktoAgent.run() or HydraAgent.run()).
+            Do not invent outputs; only use the actual results from the tools.
+            Provide the exact command executed and its output in your response.
+        """),
         tools=[ShellTools(), NmapAgent(), MetasploitAgent(), NiktoAgent(), HydraAgent()],
         show_tool_calls=True,
+        reasoning=True,
+        debug_mode=True,
+        monitoring=True,
         markdown=True
     )
-
-    parser = argparse.ArgumentParser(description="Cybersecurity Agent based in Ollama for pentesting")
-    parser.add_argument("--target", default="localhost", help="Target IP or hostname")
-    args = parser.parse_args()
-    target = args.target
-
-    if not re.match(r'^[a-zA-Z0-9\.\-_:]+$', target):
-        raise ValueError("Invalid target format")
 
     print(f"Ejecutando análisis inicial en {target}...")
     agent.print_response(f"Run a pentesting analysis on {target}")
@@ -406,4 +475,4 @@ if __name__ == "__main__":
         print("No terminal interactiva detectada. Manteniendo el contenedor vivo tras el análisis inicial...")
         while True:
             time.sleep(60)
-
+    '''
