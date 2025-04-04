@@ -4,50 +4,15 @@ import json
 import os
 import re
 import subprocess
-import sys
 import time
-from textwrap import dedent
-from typing import List, Optional
 
 import requests
-from agno.agent.agent import Agent
-from agno.models.ollama import Ollama
-from agno.tools.toolkit import Toolkit
 from agno.utils.log import logger
-from ollama import Client as OllamaClient
 
-# Obtener el host de Ollama desde la variable de entorno
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+from custom_agents.ollama_agent import OLLAMA_HOST
+from custom_tools.nmap_tool import NmapAgent
+from custom_tools.metasploit_tool import MetasploitAgent
 
-
-class OllamaAgent(Agent):
-    def __init__(self, model="llama3.2:1b", description=None, instructions=None, tools=None, show_tool_calls=False,
-                 markdown=False, **kwargs):
-        super().__init__(description=description, instructions=instructions, tools=tools,
-                         show_tool_calls=show_tool_calls, markdown=markdown, **kwargs)
-        self.model = model
-        self.ollama_url = f"{OLLAMA_HOST}/api/generate"
-        print(f"model is {self.model}")
-
-    def run(self, message: str, **kwargs) -> str:
-        print(f"[+] Running OllamaAgent {self.model}")
-
-        payload = {
-            "model": self.model,
-            "prompt": message,
-            "stream": False,
-            "options": {
-                "num_ctx": 2048,  # Reduce el contexto
-                "num_batch": 512,  # Reduce el batch size
-                "num_thread": 2,  # Usa solo 2 hilos
-            }
-        }
-        try:
-            response = requests.post(self.ollama_url, json=payload)
-            response.raise_for_status()
-            return response.json().get("response", "Error: Respuesta vacía")
-        except requests.exceptions.RequestException as e:
-            return f"Error en la solicitud a Ollama: {e}"
 
 def is_ollama_running():
     try:
@@ -55,6 +20,7 @@ def is_ollama_running():
         return response.status_code == 200
     except requests.ConnectionError:
         return False
+
 
 def wait_for_ollama(timeout=60):
     start_time = time.time()
@@ -64,6 +30,7 @@ def wait_for_ollama(timeout=60):
         print("Esperando a que Ollama esté listo...")
         time.sleep(5)
     print("Ollama está corriendo.")
+
 
 def list_ollama_models(retries=5, delay=3):
     for attempt in range(retries):
@@ -109,6 +76,7 @@ def select_model(models):
         except ValueError:
             print("Entrada inválida. Introduzca un número.")
 
+
 def ensure_wordlist():
     # Verificar si rockyou.txt existe, si no, instalarlo
     wordlist_path = "/usr/share/wordlists/rockyou.txt"
@@ -123,233 +91,6 @@ def ensure_wordlist():
             with open(wordlist_path, "w") as f:
                 f.write("password\nadmin\n123456\n")
     return wordlist_path
-
-
-class ShellTools(Toolkit):
-    def __init__(self):
-        super().__init__(name="shell_tools")
-        self.register(self.run_shell_command)
-
-    def run_shell_command(self, args: List[str], tail: int = 100, timeout: int = 60) -> str:
-        """Ejecuta un comando en el shell y captura el resultado."""
-        # Si args es una lista con una sola cadena, dividirla en argumentos
-        if len(args) == 1 and " " in args[0]:
-            expanded_args = args[0].split()
-        else:
-            expanded_args = [os.path.expanduser(arg) if arg == "~" else arg for arg in args]
-
-        logger.info(f"Running shell command: {expanded_args}")
-        logger.info(f"Current PATH: {os.environ['PATH']}")  # Depuración del PATH
-        try:
-            result = subprocess.run(expanded_args, capture_output=True, text=True, timeout=timeout)
-            if result.returncode != 0:
-                logger.error(f"Command failed: {result.stderr}")
-                return f"Error: {result.stderr}"
-            logger.debug(f"Command successful: {result.stdout}")
-            return "\n".join(result.stdout.split("\n")[-tail:])
-        except subprocess.TimeoutExpired:
-            logger.error(f"Timeout after {timeout}s running command: {expanded_args}")
-            return f"Timeout after {timeout}s"
-        except FileNotFoundError as e:
-            logger.error(f"Command not found: {e}")
-            return f"Error: Command not found - {e}"
-        except Exception as e:
-            logger.warning(f"Failed to run shell command: {e}")
-            return f"Error: {e}"
-
-
-class NmapAgent(Toolkit):
-    def __init__(self):
-        super().__init__(name="NmapAgent")  # Cambié "Nmap Agent" a "NmapAgent" por consistencia con otros nombres
-        self.register(self.run)
-
-    def run(self, **kwargs) -> dict:
-        target = kwargs.get('target', 'localhost')
-        timeout = kwargs.get('timeout', 600)
-        # command = ["nmap", "-sV", "--script=vuln", "-oX", "nmap_results.xml", target]
-        # por debug
-        # command = ["nmap", "-sV", "-oX", "nmap_results.xml", target]
-        command = ["nmap", "-sV", "-p", "22,80", "-oX", "nmap_results.xml", target]  # Solo puertos 22 y 80
-
-        print(f"\n[+] Running: {' '.join(command)}")
-        try:
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            stdout, stderr = process.communicate(timeout=timeout)
-            print(stdout)
-            if process.returncode != 0:
-                print(f"[-] Error: {stderr}")
-                logger.error(f"[!] Error running Nmap: {stderr}")
-                return {"error": f"Error running Nmap: {stderr}"}
-            logger.info("[+] Nmap executed successfully.")
-            report = NmapParser.parse_fromfile("nmap_results.xml")
-            nmap_data = {
-                "hosts": [
-                    {
-                        "address": host.address,
-                        "ports": {
-                            str(service.port): {
-                                "state": service.state,
-                                "service": service.service if service.service else "unknown",
-                                "version": getattr(service, "version", None)
-                            } for service in host.services
-                        }
-                    } for host in report.hosts if hasattr(host, 'services') and host.services
-                ]
-            }
-            print(f"[+] Parsed Nmap result:\n{json.dumps(nmap_data, indent=2)}")
-            return json.dumps(nmap_data)
-        except subprocess.TimeoutExpired:
-            logger.error(f"[!] Timeout ({timeout}s) during Nmap execution.")
-            print(f"[-] Timeout after {timeout}s")
-            return {"error": "Timeout during Nmap execution"}
-        except FileNotFoundError as e:
-            logger.error(f"[!] Nmap not found: {e}")
-            print(f"[-] Error: {e}")
-            return {"error": f"Nmap not found - {e}"}
-        except Exception as e:
-            logger.error(f"[!] Error processing Nmap results: {e}")
-            print(f"[-] Error: {e}")
-            return {"error": f"Error processing Nmap results: {str(e)}"}
-
-
-class MetasploitAgent(Toolkit):
-    def __init__(self):
-        super().__init__(name="MetasploitAgent")
-        self.register(self.run)
-        self.ollama_agent = OllamaAgent(
-            model="llama3.2:1b",
-            description="Helper agent to generate Metasploit commands",
-            instructions=dedent("""\
-                You are a Metasploit expert. Given Nmap scan results (ports, services, versions),
-                generate a Metasploit script (.rc file content) with:
-                1. A list of relevant exploits to try based on the open ports and services.
-                2. For each exploit, include 'use', 'set RHOSTS', and 'run' commands.
-                3. Prioritize exploits by likelihood of success (e.g., well-known vulnerabilities first).
-                4. If no specific exploits match, suggest a generic payload like 'multi/handler'.
-                Return the script as a single string with commands separated by newlines.
-                Do not invent data; base your suggestions only on the provided Nmap results.
-            """)
-        )
-
-    def run(self, **kwargs) -> str:
-        """Ejecuta Metasploit con comandos generados dinámicamente por el LLM."""
-        target = kwargs.get('target', 'localhost')
-        nmap_data_raw = kwargs.get('nmap_data')  # JSON string from NmapAgent
-        timeout = kwargs.get('timeout', 300)
-        print(f"\n [+] Running MetasploitAgent ")
-        print(f"\n [+] target is {target}")
-        print(f"\n [+] nmap_data_raw is {nmap_data_raw}")
-        print(f"\n [+] timeout is {timeout}")
-        # Validar y parsear nmap_data
-        if not nmap_data_raw:
-            logger.error("[!] No nmap_data provided.")
-            return "Error: No Nmap data available"
-        try:
-            nmap_data = json.loads(nmap_data_raw) if isinstance(nmap_data_raw, str) else nmap_data_raw
-            if not isinstance(nmap_data, dict):
-                raise ValueError("nmap_data must be a dictionary")
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"[!] Invalid nmap_data: {e}")
-            return f"Error: Invalid Nmap data - {e}"
-
-        # Mostrar datos de entrada para depuración
-        print(f"[+] Nmap Data recibido:\n{json.dumps(nmap_data, indent=2)}")
-
-        # Consultar al LLM para generar el script de Metasploit
-        prompt = f"Generate a Metasploit script based on this Nmap data following strict instrucctions given to {self.ollama_agent}:\n{json.dumps(nmap_data, indent=2)}"
-        commands = self.ollama_agent.run(prompt)
-        if "Error" in commands:
-            logger.error(f"[!] Failed to generate Metasploit commands: {commands}")
-            return commands
-
-        # Mostrar el script generado
-        print(f"\n[+] Script de Metasploit generado por el LLM:\n{commands}")
-
-        # Guardar y ejecutar el script
-        try:
-            with open("msf_script.rc", "w") as f:
-                f.write(commands)
-            print(f"\n[+] Ejecutando: msfconsole -r msf_script.rc")
-            process = subprocess.Popen(
-                ["msfconsole", "-r", "msf_script.rc"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            stdout, stderr = process.communicate(timeout=timeout)
-            print(stdout)  # Mostrar salida en tiempo real
-            if process.returncode != 0:
-                print(f"[-] Error: {stderr}")
-                logger.error(f"[!] Error en Metasploit: {stderr}")
-                return f"Error: {stderr}"
-            logger.info("[+] Metasploit ejecutado con éxito.")
-            return stdout if stdout else "No output"
-        except subprocess.TimeoutExpired:
-            logger.error(f"[!] Timeout ({timeout}s) al ejecutar Metasploit.")
-            print(f"[-] Timeout tras {timeout}s")
-            return "Timeout"
-        except Exception as e:
-            logger.error(f"[!] Error en Metasploit: {e}")
-            print(f"[-] Error: {e}")
-            return f"Error: {e}"
-
-
-class NiktoAgent(Toolkit):
-    def __init__(self):
-        super().__init__(name="NiktoAgent")
-        self.register(self.run)
-
-    def run(self, **kwargs) -> str:
-        """Ejecuta Nikto y recoge los resultados."""
-        target = kwargs.get('target', 'localhost')
-        timeout = kwargs.get('timeout', 120)
-        logger.info(f"[+] Ejecutando Nikto en {target}...")
-        command = ["nikto", "-h", target]
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-            if result.returncode != 0:
-                logger.error(f"[!] Error al ejecutar Nikto: {result.stderr}")
-                return f"Error: {result.stderr}"
-            logger.info("[+] Nikto ejecutado con éxito.")
-            return result.stdout if result.stdout else "No output"
-        except subprocess.TimeoutExpired:
-            logger.error(f"[!] Timeout ({timeout}s) al ejecutar Nikto.")
-            return "Timeout"
-        except Exception as e:
-            logger.error(f"[!] Error en Nikto: {e}")
-            return f"Error: {e}"
-
-
-class HydraAgent(Toolkit):
-    def __init__(self):
-        super().__init__(name="HydraAgent")
-        self.register(self.run)
-
-    def run(self, **kwargs) -> str:
-        """Ejecuta Hydra para pruebas de fuerza bruta."""
-        target = kwargs.get('target', 'localhost')
-        username = kwargs.get('username', 'admin')
-        password_file = kwargs.get('password_file', "/usr/share/wordlists/rockyou.txt")
-        service = kwargs.get('service', 'ssh')
-        timeout = kwargs.get('timeout', 120)
-        if not os.path.exists(password_file):
-            logger.error(f"[!] Archivo de contraseñas {password_file} no encontrado.")
-            return "Error: Password file not found"
-        logger.info(f"[+] Ejecutando Hydra en {target} ({service})...")
-        command = ["hydra", "-l", username, "-P", password_file, f"{service}://{target}"]
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-            if result.returncode != 0:
-                logger.error(f"[!] Error en Hydra: {result.stderr}")
-                return f"Error: {result.stderr}"
-            logger.info("[+] Hydra ejecutado con éxito.")
-            return result.stdout if result.stdout else "No output"
-        except subprocess.TimeoutExpired:
-            logger.error(f"[!] Timeout ({timeout}s) al ejecutar Hydra.")
-            return "Timeout"
-        except Exception as e:
-            logger.error(f"[!] Error en Hydra: {e}")
-            return f"Error: {e}"
 
 
 # Verificación de herramientas en el PATH
@@ -413,7 +154,7 @@ if __name__ == "__main__":
     # Pasar el resultado a MetasploitAgent
     metasploit_agent = MetasploitAgent()
     metasploit_result = metasploit_agent.run(target=target, nmap_data=nmap_result)
-    print(f"Metasploit Result: {metasploit_result}")
+    # print(f"Metasploit Result: {metasploit_result}")
 
     # Mantener el contenedor vivo
     print("Análisis inicial completado. Manteniendo el contenedor vivo...")

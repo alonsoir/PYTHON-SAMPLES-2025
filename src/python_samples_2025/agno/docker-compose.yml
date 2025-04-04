@@ -17,6 +17,8 @@ services:
           memory: "4g"
     networks:
       - sec-net
+    cap_add:
+      - SYS_TIME  # Permite ajustar la hora del sistema
 
   ollama:
     image: ollama/ollama:latest
@@ -26,12 +28,15 @@ services:
     volumes:
       - ollama_models:/root/.ollama
       - ./ollama_logs:/logs
+      - ./ollama-entrypoint.sh:/ollama-entrypoint.sh
     environment:
       - OLLAMA_DEBUG=1
       - OLLAMA_NUM_PARALLEL=1
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_NUM_THREADS=2  # Reducimos aún más a 2 hilos
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command: "/ollama-entrypoint.sh"
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
