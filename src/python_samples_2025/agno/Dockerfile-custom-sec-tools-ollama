@@ -27,18 +27,21 @@ RUN apt-get update && apt-get upgrade -y && \
     hydra \
     metasploit-framework \
     wordlists \
-    ntpdate && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    chrony \
+    iputils-ping \
+    docker.io \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Instalar Python 3.10 desde fuente (opcional, si la versión preinstalada no es suficiente)
+# Instalar Python 3.10 desde fuente
 RUN wget https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz && \
-     tar -xf Python-3.10.16.tgz && \
-     cd Python-3.10.16 && \
-     ./configure --enable-optimizations && \
-     make -j $(nproc) && \
-     make altinstall && \
-     cd .. && \
-     rm -rf Python-3.10.16 Python-3.10.16.tgz
+    tar -xf Python-3.10.16.tgz && \
+    cd Python-3.10.16 && \
+    ./configure --enable-optimizations && \
+    make -j $(nproc) && \
+    make altinstall && \
+    ln -sf /usr/local/bin/python3.10 /usr/bin/python3 && \
+    cd .. && \
+    rm -rf Python-3.10.16 Python-3.10.16.tgz
 
 # Instalar Poetry
 RUN curl -sSL https://install.python-poetry.org | /usr/local/bin/python3.10 - && \
@@ -70,4 +73,4 @@ RUN if [ -f /usr/share/wordlists/rockyou.txt.gz ]; then \
     fi
 
 # Usar el script de entrada como punto de entrada
-CMD ["./entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "./entrypoint.sh"]

@@ -2,7 +2,7 @@ import os
 
 import requests
 from agno.agent.agent import Agent
-
+from agno.utils.log import AgnoLogger
 # Obtener el host de Ollama desde la variable de entorno
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
@@ -29,8 +29,10 @@ class OllamaAgent(Agent):
             }
         }
         try:
-            response = requests.post(self.ollama_url, json=payload)
+            response = requests.post(self.ollama_url, json=payload,timeout=300)
             response.raise_for_status()
+            print(f" [+] Ollama response: {response}")
             return response.json().get("response", "Error: Respuesta vacía")
         except requests.exceptions.RequestException as e:
+            print(f"Error en la solicitud a Ollama: {e}")
             return f"Error en la solicitud a Ollama: {e}"
