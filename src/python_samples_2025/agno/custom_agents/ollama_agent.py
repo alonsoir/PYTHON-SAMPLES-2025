@@ -1,10 +1,8 @@
 import os
-
 import requests
 from agno.agent.agent import Agent
-from agno.utils.log import AgnoLogger
-# Obtener el host de Ollama desde la variable de entorno
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 
 class OllamaAgent(Agent):
     def __init__(self, model="llama3.2:1b", description=None, instructions=None, tools=None, show_tool_calls=False,
@@ -23,16 +21,43 @@ class OllamaAgent(Agent):
             "prompt": message,
             "stream": False,
             "options": {
-                "num_ctx": 2048,  # Reduce el contexto
-                "num_batch": 512,  # Reduce el batch size
-                "num_thread": 2,  # Usa solo 2 hilos
+                "num_ctx": 4096,
+                "num_batch": 512,
+                "num_thread": 8,
             }
         }
+        print(f"[+] payload is \n {payload}")
         try:
-            response = requests.post(self.ollama_url, json=payload,timeout=300)
+            response = requests.post(self.ollama_url, json=payload, timeout=600)
             response.raise_for_status()
             print(f" [+] Ollama response: {response}")
-            return response.json().get("response", "Error: Respuesta vacía")
+            raw_response = response.json().get("response", "Error: Respuesta vacía")
+
+            # Validar y corregir la respuesta si es necesario
+            if not self._is_valid_format(raw_response):
+                print(f" [!] Ollama response does not match expected format: {raw_response}")
+                # Aquí podrías intentar corregir la respuesta o devolver un error
+                return "Error: Invalid response format from Ollama"
+            return raw_response
+
         except requests.exceptions.RequestException as e:
             print(f"Error en la solicitud a Ollama: {e}")
             return f"Error en la solicitud a Ollama: {e}"
+
+    def _is_valid_format(self, response: str) -> bool:
+        """Valida si la respuesta sigue el formato esperado: ip|hostname|mac;port,state,service,version;cve,score,url"""
+        if not response or ";" not in response:
+            return False
+        parts = response.split(";")
+        for part in parts:
+            subparts = part.split(",")
+            if "|" in part:  # Host part: ip|hostname|mac
+                if len(part.split("|")) != 3:
+                    return False
+            elif len(subparts) == 4:  # Ports part: port,state,service,version
+                continue
+            elif len(subparts) == 3:  # Vulnerabilities part: cve,score,url
+                continue
+            else:
+                return False
+        return True

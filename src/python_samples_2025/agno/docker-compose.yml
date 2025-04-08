@@ -16,8 +16,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.5"  # Reducido de 2 a 1.5 para dejar espacio al contenedor vulnerable
-          memory: "3g"  # Reducido de 4g a 3g
+          cpus: "2"
+          memory: "6g"
     networks:
       - sec-net
     cap_add:

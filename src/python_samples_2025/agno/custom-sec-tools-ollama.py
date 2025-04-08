@@ -11,6 +11,8 @@ import requests
 from agno.utils.log import logger
 
 from custom_agents.ollama_agent import OLLAMA_HOST
+from custom_tools.Hydra_agent import HydraAgent
+from custom_tools.nikto_agent import NiktoAgent
 from custom_tools.nmap_tool import NmapAgent
 from custom_tools.metasploit_tool import MetasploitAgent
 
@@ -153,11 +155,39 @@ if __name__ == "__main__":
         print(f"Target '{target}' no pasa la validación de regex.")
         raise ValueError("Invalid target format")
 
-    # Ejecutar NmapAgent directamente para depuración
-    nmap_agent = NmapAgent()
-    nmap_result = nmap_agent.run(target=target, ports=80)
-    print(json.dumps(nmap_result, indent=2))
+    # Ejecutar NmapAgent debería generar un fichero nmap_result_raw.txt al que le pediría
+    # al LLM que lo parseara para generar bien un nmap_result.json o un formato más compacto.from
+    # Despues de dos días probandolo todo, llego a la conclusión que mi hardware y el llm cuantizado
+    # que me puedo permitir ejecutar en ollama, no puede realizar la tarea. Se inventa las cosas, tiene problemas
+    # con el tamaño del contexto, etc. He tratado incluso a procesar por partes, pero el LLM no tiene memoria, simplemente
+    # no recuerda el contexto anterior y al hacer los splits, corres el riesgo de romper la integridad estructural del
+    # json que quieres generar. Puede que con un LLM mejor entrenado, con mayor ventana de contexto pueda con la tarea.
+    # Con mis recursos locales simplemente no se puede hacer, o yo no he sido capaz de hacerlo.
 
+    # La idea es instanciar un Agente agno que tenga adscritos las herramientas Nmap_Agent, Nikto_Agent y Metasploit_Agent,
+    # cada uno de ellos con ollama de ayudante para que dado la única entrada hardcodeada a Nmap en la que le pido que
+    # averigue las vulnerabilidades de una máquina target, Agno sea capaz de usar como lo haría un operador humano las
+    # distintas herramientas. En una primera fase me he encontrado que el LLM que cargo en Ollama, codellama, llama3.2:1b,
+    # llama3.2:7b simplemente no pueden ser usados en mi hardware, probablemente debido a la falta de una GPU y a la poca
+    # ram que le puedo dedicar corriendo los procesos en Docker Desktop sobre OSX 15.3.2 (24D81), 2,4 GHz Intel Core i9
+    # de 8 núcleos, Radeon Pro Vega 20 4 GB, Intel UHD Graphics 630 1536 MB, 32 GB 2400 MHz DDR4.
+
+
+    # nmap_agent = NmapAgent()
+    # nmap_result = nmap_agent.run(target=target, ports=80)
+    # print(json.dumps(nmap_result, indent=2))
+
+    agent = NiktoAgent()
+    result = agent.run(json_file="nmap_result.json")
+    print(json.dumps(result, indent=2))
+
+    agent = HydraAgent()
+    result = agent.run(json_file="nmap_result.json")
+    print(json.dumps(result, indent=2))
+
+    agent = MetasploitAgent()
+    result = agent.run(json_file="nmap_result.json")
+    print(json.dumps(result, indent=2))
 
     # Mantener el contenedor vivo
     print("Análisis inicial completado. Manteniendo el contenedor vivo...")
