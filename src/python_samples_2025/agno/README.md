@@ -1743,9 +1743,109 @@ Traceback (most recent call last):
     raise ModelProviderError(
 agno.exceptions.ModelProviderError: You exceeded your current quota, please check your plan and billing details. For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors.
 
-Para tratar de circumvenir estos problemas de quotas, creo que lo mejor es tratar de ejecutar ollama en local. 
+Para tratar de circunvenir estos problemas de quotas, creo que lo mejor es tratar de ejecutar ollama en local. 
 He creado un script, custom-sec-tools-ollama.py que usa ollama, y tiene que usar por defecto un LLM que permita 
 function calling, por lo que, mientras hago una busqueda de llm que lo permitan, me quedaré con llama3.2
 
 Por ahora está a fuego, He creado un Dockerfile-custom-sect-tools-ollama, falta por crear un docker-compose que 
 ponga todo junto. Pendiente.
+
+Actualizacion: 
+
+Resumen: Exploración de LLM locales con Ollama
+
+Contexto inicial
+Todo comenzó cuando quisimos usar LLM para automatizar tareas de seguridad (Nmap, Nikto, Hydra, Metasploit) en un flujo 
+de pentesting. Los LLM online (como Grok o GPT) eran atractivos, pero te enfrentaste a cuotas de uso y limitaciones 
+éticas (e.g., no generar exploits por políticas). 
+
+Además, no contabas con recursos económicos para suscripciones premium. 
+Decidiste explorar Ollama en local con modelos pequeños (e.g., llama3.2:1b, 1.2B parámetros) para mantener el control, 
+evitar costos y trabajar con lo que tenías a mano.
+
+Lo realizado
+Configuración del entorno:
+Montamos un contenedor custom-sec con Ollama y modelos como llama3.2:1b y codellama.
+Ajustamos docker-compose.yml con límites iniciales (3GiB RAM, 1 CPU) y añadimos persistencia en /results.
+
+NmapAgent:
+Intentamos generar comandos Nmap con el LLM local para escanear objetivos y producir JSON.
+Problema: El contenedor se quedaba sin recursos (RAM/CPU) y fallaba al ejecutar Nmap.
+Solución parcial: La lista de exploits fue extraída exitosamente por NmapAgent, pero la falta de recursos para generar 
+el JSON nos obligó a pedirme que Grok lo creara manualmente partiendo de los logs generados por el agente.
+Generé un JSON de ejemplo (e.g., {"nikto": ["172.18.0.2 80"], "hydra": ["172.18.0.2 80 http"]}) para avanzar.
+
+NiktoAgent:
+Creamos un agente con éxito para ejecutar Nikto basado en el JSON generado.
+Iteramos para que usara el puerto del JSON (-p) en lugar de asumir 80.
+
+HydraAgent:
+Desarrollamos un agente con éxito para ataques de fuerza bruta en HTTP, usando rockyou.txt.
+Ajustamos el logging para mostrar contraseñas completas (límite de 2000 caracteres).
+
+MetasploitAgent:
+Diseñamos un agente para generar exploits con el LLM y ejecutarlos con msfconsole.
+Añadimos searchsploit como respaldo y persistencia en disco para scripts y salidas.
+Pendiente de prueba.
+
+AgnoAgent:
+Creamos un orquestador austero que inspecciona el JSON y elige una herramienta (Nikto, Hydra, Metasploit) con 
+print_response.
+Lo diseñamos para ser ligero, confiando en instrucciones y el LLM para decidir.
+Pendiente de prueba.
+
+Éxitos
+NiktoAgent: Funciona perfectamente, respeta los puertos del JSON y genera resultados consistentes.
+HydraAgent: Éxito total, encuentra las 16 contraseñas válidas (e.g., 12345, password) como en la ejecución manual, con 
+logs completos.
+Configuración local: Ollama corre bien en custom-sec con modelos pequeños, demostrando viabilidad sin servicios online.
+Framework Agno: La base para unificar herramientas está lista y alineada con tus hipótesis.
+NmapAgent (parcial): Aunque no generó el JSON por falta de recursos, extrajo exitosamente la lista de exploits, 
+permitiéndonos avanzar con un JSON manual.
+
+Fracasos
+NmapAgent: Falló localmente al generar el JSON por insuficiencia de recursos en el contenedor, forzándonos a crear el 
+JSON manualmente a partir de los datos logs de la herramienta.
+Limitaciones del LLM local: Modelos pequeños como llama3.2:1b tienen menos capacidad que los online, lo que podría 
+afectar la generación de exploits en Metasploit.
+Lecciones aprendidas
+Recursos son clave:
+Los contenedores necesitan más RAM/CPU para tareas pesadas (Nmap, Metasploit). 
+Los 3GiB iniciales no bastaron; subir a 6GiB y 2 CPUs es necesario.
+LLM locales vs online:
+Modelos pequeños son prácticos para tareas simples (Nikto, Hydra), pero fallan en escenarios complejos (Nmap) por falta 
+de potencia o datos de entrenamiento.
+La ética de los LLM online no es un problema en local, pero sacrificamos capacidad.
+Solución manual como puente:
+Generar el JSON manualmente tras el fallo de NmapAgent fue una solución pragmática que nos permitió seguir adelante.
+Iteración incremental:
+Ir herramienta por herramienta (Nikto, Hydra, luego Metasploit) facilitó depurar problemas específicos 
+(e.g., puertos en Nikto, logging en Hydra).
+Persistencia importa:
+Guardar resultados en disco (logs, exploits) facilita la depuración y la generación de informes.
+Simplicidad en Agno:
+Un agente austero con instrucciones claras es más fácil de controlar y observar que uno complejo con lógica predefinida.
+Siguientes pasos
+Probar MetasploitAgent:
+Instalar Metasploit y searchsploit en custom-sec.
+Ejecutar con un objetivo simple (e.g., 172.18.0.2 80 http) y ajustar según logs.
+Aumentar recursos en docker-compose.yml (6GiB, 2 CPUs).
+Integrar Ollama en AgnoAgent:
+Conectar AgnoAgent a Ollama para que el LLM decida la herramienta dinámicamente.
+Probar con el JSON existente y observar su comportamiento.
+Unificar logs:
+Añadir un manejador de archivo a los logs para generar /results/combined.log.
+
+Evaluar hipótesis:
+Hipótesis 1: Ver si Metasploit funciona con el LLM local. Si falla, considerar alternativas (e.g., preprocesar offline 
+como con Nmap).
+Hipótesis 2: Confirmar que AgnoAgent puede orquestar herramientas bajo el framework Agno y generar un informe final.
+Optimizar recursos:
+Monitorear CPU/RAM durante las pruebas y ajustar el contenedor si es necesario.
+Reflexión final
+Desde que descartamos los LLM online, hemos avanzado significativamente. El fallo de NmapAgent nos obligó a improvisar 
+con un JSON manual, pero eso no detuvo el progreso: Nikto y Hydra son éxitos rotundos, demostrando que Ollama con 
+modelos pequeños es viable para tareas específicas. Metasploit será la próxima prueba clave, y el enfoque 
+austero de AgnoAgent te da flexibilidad para experimentar. 
+La persistencia en disco asegura que no perdamos nada, y la generación manual del JSON fue un recordatorio de que a 
+veces las soluciones prácticas son el puente hacia el éxito. 
