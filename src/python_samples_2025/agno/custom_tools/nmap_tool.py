@@ -1,15 +1,13 @@
+import logging
 import subprocess
 import os
-from typing import Dict
+import json
 from agno.tools.toolkit import Toolkit
 from agno.utils.log import logger
 
-import logging
 logger.setLevel(logging.DEBUG)
-# Crear directorio /results si no existe
 results_dir = "/results"
-os.makedirs(results_dir, exist_ok=True)  # Asegura que el directorio esté listo
-# Configurar logging
+os.makedirs(results_dir, exist_ok=True)
 log_file = "/results/combined.log"
 file_handler = logging.FileHandler(log_file)
 file_handler.setLevel(logging.DEBUG)
@@ -22,62 +20,85 @@ class NmapAgent(Toolkit):
         super().__init__(name="NmapAgent")
         self.register(self.run)
         self.results_dir = "/results"
+        os.makedirs(self.results_dir, exist_ok=True)
 
-    def run(self, **kwargs) -> Dict[str, str]:
-        target = kwargs.get('target', '172.18.0.2')
-        ports = str(kwargs.get('ports', '80'))  # Convertir a cadena aquí
-        xml_output = f"{self.results_dir}/nmap_output.xml"
-        json_output = f"{self.results_dir}/nmap_result.json"
-        xsl_file = "/usr/local/share/nmap_to_json.xsl"
-
-        if not os.path.exists(self.results_dir):
-            os.makedirs(self.results_dir)
-
-        # Ejecutar Nmap con detección de vulnerabilidades
-        command = ["nmap", "-sV", "--script", "vuln", "-p", ports, target, "-oX", xml_output]
-        logger.info(f"[+] Ejecutando Nmap en {target} puertos {ports} con detección de vulnerabilidades...")
-        logger.debug(f" [+] Command: {' '.join(command)}")
+    def run(self, target: str, ports: str) -> dict:
+        output_xml = os.path.join(self.results_dir, "nmap_output.xml")
+        json_file = os.path.join(self.results_dir, "nmap_result.json")
+        nmap_to_json_xsl = "/usr/local/share/nmap_to_json.xsl"
 
         try:
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            stdout, stderr = process.communicate(timeout=600)
+            logger.info(f"[+] Ejecutando Nmap en {target} puertos {ports} con detección de vulnerabilidades y OS...")
+            command = [
+                "nmap", "-sV", "--script", "vuln", "-O",  # Añadir -O para detección de OS
+                "-p", ports, target,
+                "-oX", output_xml
+            ]
+            logger.debug(f" [+] Command: {' '.join(command)}")
+            process = subprocess.run(command, capture_output=True, text=True, check=True)
 
             logger.debug(f" [+] Return code: {process.returncode}")
-            logger.debug(f" [+] Stdout: {stdout[:4096]}..." if stdout else " [+] Stdout: (vacío)")
-            logger.debug(f" [+] Stderr: {stderr[:4096]}..." if stderr else " [+] Stderr: (vacío)")
+            logger.debug(f" [+] Stdout: {process.stdout}")
+            logger.debug(f" [+] Stderr: {process.stderr}")
 
-            if process.returncode != 0 or not os.path.exists(xml_output):
-                raise Exception(f"Nmap falló: {stderr}")
+            if not os.path.exists(output_xml):
+                logger.error(f"[!] No se generó {output_xml}")
+                return {"error": "No se generó el archivo XML de Nmap"}
 
             # Convertir XML a JSON
-            xslt_command = ["xsltproc", xsl_file, xml_output]
-            with open(json_output, "w") as f:
-                process = subprocess.Popen(xslt_command, stdout=f, stderr=subprocess.PIPE, text=True)
-                _, stderr = process.communicate(timeout=30)
+            xsltproc_command = ["xsltproc", nmap_to_json_xsl, output_xml]
+            result = subprocess.run(xsltproc_command, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(f"[!] Error al convertir XML a JSON: {result.stderr}")
+                return {"error": f"Error al convertir XML a JSON: {result.stderr}"}
 
-            if process.returncode != 0:
-                raise Exception(f"XSLT falló: {stderr}")
+            nmap_json = result.stdout
+            try:
+                nmap_data = json.loads(nmap_json)
+            except json.JSONDecodeError as e:
+                logger.error(f"[!] Error al parsear JSON de Nmap: {e}")
+                return {"error": f"Error al parsear JSON: {e}"}
 
-            logger.info(f"[+] JSON generado en {json_output}")
-            with open(json_output, "r") as f:
-                return {"result": f.read()}
+            # Extraer OS del resultado de Nmap
+            os_info = None
+            for host in nmap_data.get("nmaprun", {}).get("host", []):
+                os_section = host.get("os", {})
+                os_matches = os_section.get("osmatch", [])
+                if os_matches:
+                    os_info = os_matches[0].get("name", "unknown").lower()
+                    break
 
-        except subprocess.TimeoutExpired as e:
-            logger.error(f"[!] Timeout (600s) al ejecutar Nmap en {target}")
-            process.kill()
-            stdout, stderr = process.communicate()
-            raise Exception(f"Timeout: {stderr if stderr else 'sin detalles'}")
+            # Estructurar el resultado
+            result_dict = {
+                "target": {
+                    "ip": target,
+                    "port": ports,
+                    "service": nmap_data.get("service", "unknown"),
+                    "version": nmap_data.get("version", "unknown"),
+                    "os": os_info or "unknown"  # Añadir OS
+                },
+                "tools": {
+                    "nikto": [f"{target} {ports}"],
+                    "hydra": [f"{target} {ports} {nmap_data.get('service', 'unknown')}"],
+                    "metasploit": nmap_data.get("metasploit", {})
+                }
+            }
+
+            with open(json_file, "w") as f:
+                json.dump(result_dict, f, indent=2)
+            logger.info(f"[+] JSON generado en {json_file}")
+
+            return result_dict
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"[!] Error ejecutando Nmap: {e.stderr}")
+            return {"error": f"Error ejecutando Nmap: {e.stderr}"}
         except Exception as e:
-            logger.error(f"[!] Error en NmapAgent: {e}")
-            return {"error": str(e)}
+            logger.error(f"[!] Error inesperado en Nmap: {e}")
+            return {"error": f"Error inesperado: {e}"}
 
 
 if __name__ == "__main__":
     agent = NmapAgent()
-    result = agent.run()
-    print(result.get("result", result.get("error")))
+    result = agent.run(target="172.18.0.2", ports="80")
+    print(json.dumps(result, indent=2))

@@ -26,6 +26,7 @@ RUN apt-get update && apt-get upgrade -y && \
     nikto \
     hydra \
     metasploit-framework \
+    exploitdb \
     wordlists \
     chrony \
     iputils-ping \

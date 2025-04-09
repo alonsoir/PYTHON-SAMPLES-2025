@@ -10,6 +10,7 @@ import requests
 
 from agno.utils.log import logger
 from custom_agents.ollama_agent import OLLAMA_HOST
+from custom_tools.metasploit_tool import MetasploitAgent
 from custom_tools.nmap_tool import NmapAgent
 from custom_tools.nikto_agent import NiktoAgent
 from custom_tools.Hydra_agent import HydraAgent
@@ -175,11 +176,11 @@ def main():
     print(json.dumps(hydra_result, indent=2))
 
     # Metasploit (descomentado cuando esté listo)
-    # logger.info("Ejecutando Metasploit...")
-    # metasploit_agent = MetasploitAgent()
-    # metasploit_result = metasploit_agent.run(json_file=json_file)
-    # results["metasploit"] = metasploit_result
-    # print(json.dumps(metasploit_result, indent=2))
+    logger.info("Ejecutando Metasploit...")
+    metasploit_agent = MetasploitAgent()
+    metasploit_result = metasploit_agent.run(json_file=json_file)
+    results["metasploit"] = metasploit_result
+    print(json.dumps(metasploit_result, indent=2))
 
     # Generar reporte
     generate_report(results, target)
