@@ -6,51 +6,50 @@ from typing import Dict, List
 from agno.tools.toolkit import Toolkit
 from agno.utils.log import logger
 
-# Forzar nivel de logging a DEBUG
+# Configuración de logging
 import logging
 logger.setLevel(logging.DEBUG)
-
+results_dir = "/results"
+os.makedirs(results_dir, exist_ok=True)
+log_file = os.path.join(results_dir, "combined.log")
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 class NiktoAgent(Toolkit):
     def __init__(self):
         super().__init__(name="NiktoAgent")
         self.register(self.run)
 
-    def run(self, **kwargs) -> Dict[str, str]:
-        """Ejecuta Nikto para cada objetivo en el archivo JSON y recoge los resultados."""
-        json_file = kwargs.get('json_file', 'nmap_result.json')
-        timeout = kwargs.get('timeout', 300)  # Aumentamos a 300 segundos por seguridad
+    def run(self, **kwargs) -> Dict[str, Dict[str, str]]:
+        """Ejecuta Nikto para cada objetivo en el archivo JSON y recoge resultados parseados."""
+        json_file = kwargs.get('json_file', os.path.join(results_dir, 'nmap_result.json'))
+        timeout = kwargs.get('timeout', 300)
 
         # Leer el archivo JSON
         try:
             with open(json_file, 'r') as f:
                 nmap_data = json.load(f)
-        except FileNotFoundError:
-            logger.error(f"[!] No se encontró el archivo {json_file}")
-            return {"error": f"No se encontró el archivo {json_file}"}
-        except json.JSONDecodeError:
-            logger.error(f"[!] Error al decodificar el archivo JSON {json_file}")
-            return {"error": f"Error al decodificar el archivo JSON {json_file}"}
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.error(f"[!] Error al leer {json_file}: {e}")
+            return {"error": str(e)}
 
-        nikto_targets: List[str] = nmap_data.get("nikto", [])
+        nikto_targets: List[str] = nmap_data.get("tools", {}).get("nikto", [])
         if not nikto_targets:
-            logger.warning("[!] No se encontraron objetivos para Nikto en el archivo JSON")
+            logger.warning("[!] No se encontraron objetivos para Nikto en el JSON")
             return {"warning": "No se encontraron objetivos para Nikto"}
 
         results = {}
         for target in nikto_targets:
             try:
-                # Extraer IP y puerto del target (e.g., "172.18.0.2 80")
-                parts = target.split(" ")
-                ip = parts[0]
-                port = parts[1] if len(parts) > 1 else "80"  # Puerto por defecto 80 si no se especifica
-                logger.info(f"[+] Ejecutando Nikto en {ip} puerto {port}...")
+                ip, port = target.split(" ", 1) if " " in target else (target, "80")
+                logger.info(f"[+] Ejecutando Nikto en {ip}:{port}...")
 
-                # Construir el comando con el puerto
-                command = ["/usr/bin/nikto", "-h", ip, "-p", port]
+                command = ["/usr/bin/nikto", "-h", ip, "-p", port, "-output", f"{results_dir}/nikto_{ip}_{port}.txt"]
                 logger.debug(f" [+] Command: {' '.join(command)}")
 
-                # Usamos Popen sin shell=True para mejor control
                 process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
@@ -64,28 +63,29 @@ class NiktoAgent(Toolkit):
                 logger.debug(f" [+] Stdout: {stdout[:500]}..." if stdout else " [+] Stdout: (vacío)")
                 logger.debug(f" [+] Stderr: {stderr[:500]}..." if stderr else " [+] Stderr: (vacío)")
 
-                # Consideramos éxito si hay salida en stdout, independientemente del returncode
-                if stdout and "Nikto" in stdout:  # Verificamos que sea una salida válida de Nikto
-                    logger.info(f"[+] Nikto ejecutado con éxito en {ip} puerto {port} (returncode: {process.returncode}).")
-                    results[target] = stdout
+                output_file = f"{results_dir}/nikto_{ip}_{port}.txt"
+                if os.path.exists(output_file) and "Nikto" in stdout:
+                    with open(output_file, 'r') as f:
+                        output = f.read()
+                    findings = [line for line in output.splitlines() if line.startswith("+ ")]
+                    logger.info(f"[+] Nikto ejecutado en {ip}:{port}. Hallazgos: {len(findings)}")
+                    results[target] = {"output": output, "findings": findings}
                 else:
-                    error_msg = stderr if stderr else "Error desconocido (sin stderr)"
-                    logger.error(f"[!] Error al ejecutar Nikto en {ip} puerto {port}: {error_msg}")
-                    results[target] = f"Error: {error_msg}"
+                    error_msg = stderr or "Error desconocido"
+                    logger.error(f"[!] Error en Nikto para {ip}:{port}: {error_msg}")
+                    results[target] = {"error": error_msg}
 
-            except subprocess.TimeoutExpired as e:
-                logger.error(f"[!] Timeout ({timeout}s) al ejecutar Nikto en {target}")
+            except subprocess.TimeoutExpired:
+                logger.error(f"[!] Timeout ({timeout}s) en {target}")
                 process.kill()
-                stdout, stderr = process.communicate()
-                results[target] = f"Timeout: {stderr if stderr else 'sin detalles'}"
+                results[target] = {"error": f"Timeout: {process.communicate()[1] or 'sin detalles'}"}
             except Exception as e:
-                logger.error(f"[!] Error inesperado en Nikto para {target}: {e}")
-                results[target] = f"Error: {e}"
+                logger.error(f"[!] Error en Nikto para {target}: {e}")
+                results[target] = {"error": str(e)}
 
         return results
 
-
 if __name__ == "__main__":
     agent = NiktoAgent()
-    result = agent.run(json_file="nmap_result.json")
+    result = agent.run()
     print(json.dumps(result, indent=2))

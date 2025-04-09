@@ -1,8 +1,20 @@
+import logging
 import os
 import requests
 from agno.agent.agent import Agent
+from agno.utils.log import logger
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+# Crear directorio /results si no existe
+results_dir = "/results"
+os.makedirs(results_dir, exist_ok=True)  # Asegura que el directorio esté listo
+# Al inicio de cada script, después de importar logging
+log_file = "/results/combined.log"
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 class OllamaAgent(Agent):
     def __init__(self, model="llama3.2:1b", description=None, instructions=None, tools=None, show_tool_calls=False,

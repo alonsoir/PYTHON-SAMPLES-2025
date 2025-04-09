@@ -30,6 +30,7 @@ RUN apt-get update && apt-get upgrade -y && \
     chrony \
     iputils-ping \
     docker.io \
+    xsltproc \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Instalar Python 3.10 desde fuente
@@ -66,8 +67,9 @@ COPY custom_agents/ ./custom_agents/
 COPY custom_tools/ ./custom_tools/
 COPY custom-sec-tools-ollama.py ./
 COPY entrypoint.sh ./
-COPY nmap_result.json ./
-COPY nmap_result_raw.txt ./
+# COPY nmap_result.json ./
+# COPY nmap_result_raw.txt ./
+COPY custom_tools/nmap_to_json.xsl /usr/local/share/nmap_to_json.xsl
 # Asegurarse de que rockyou.txt esté descomprimido
 RUN if [ -f /usr/share/wordlists/rockyou.txt.gz ]; then \
         gunzip /usr/share/wordlists/rockyou.txt.gz; \

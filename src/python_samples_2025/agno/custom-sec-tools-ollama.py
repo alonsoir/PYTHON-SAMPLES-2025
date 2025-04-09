@@ -6,190 +6,188 @@ import os
 import re
 import subprocess
 import time
-
 import requests
+
 from agno.utils.log import logger
-
 from custom_agents.ollama_agent import OLLAMA_HOST
-from custom_tools.Hydra_agent import HydraAgent
-from custom_tools.nikto_agent import NiktoAgent
 from custom_tools.nmap_tool import NmapAgent
-from custom_tools.metasploit_tool import MetasploitAgent
+from custom_tools.nikto_agent import NiktoAgent
+from custom_tools.Hydra_agent import HydraAgent
+# from custom_tools.metasploit_tool import MetasploitAgent  # Descomentado cuando esté listo
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+# Configuración de logging
+logger.setLevel(logging.DEBUG)
+results_dir = "/results"
+os.makedirs(results_dir, exist_ok=True)
+log_file = os.path.join(results_dir, "combined.log")
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 def is_ollama_running():
+    """Verifica si Ollama está activo."""
     try:
         response = requests.get(f"{OLLAMA_HOST}/", timeout=5)
         return response.status_code == 200
     except requests.ConnectionError:
         return False
 
-
 def wait_for_ollama(timeout=60):
+    """Espera a que Ollama esté listo."""
     start_time = time.time()
     while not is_ollama_running():
         if time.time() - start_time > timeout:
             raise Exception(f"No se pudo conectar a Ollama en {OLLAMA_HOST} tras {timeout}s.")
-        print("Esperando a que Ollama esté listo...")
+        logger.info("Esperando a que Ollama esté listo...")
         time.sleep(5)
-    print("Ollama está corriendo.")
-
+    logger.info("Ollama está corriendo.")
 
 def list_ollama_models(retries=5, delay=3):
+    """Lista los modelos disponibles en Ollama."""
     for attempt in range(retries):
         try:
             response = requests.get(f"{OLLAMA_HOST}/api/tags", timeout=5)
-            print(f"Respuesta de {OLLAMA_HOST}/api/tags: {response.text}")
+            logger.debug(f"Respuesta de {OLLAMA_HOST}/api/tags: {response.text}")
             response.raise_for_status()
             models_data = response.json().get("models", [])
             models = [model["name"] for model in models_data]
             if models:
+                logger.info(f"Modelos encontrados: {', '.join(models)}")
                 return models
-            print("No se encontraron modelos en Ollama.")
+            logger.warning("No se encontraron modelos en Ollama.")
             return []
         except requests.exceptions.RequestException as e:
-            print(f"Intento {attempt + 1}/{retries}: Error al listar modelos de Ollama: {e}")
+            logger.error(f"Intento {attempt + 1}/{retries}: Error al listar modelos: {e}")
             time.sleep(delay)
-    print("No se pudieron obtener los modelos de Ollama tras varios intentos.")
-    return []
-
-
-def select_model(models):
-    """Permite seleccionar un modelo de la lista disponible."""
-    if not models:
-        print("No hay modelos disponibles en Ollama.")
-        download = input("¿Desea descargar un modelo? (s/n): ").strip().lower()
-        if download == "s":
-            model_name = input("Ingrese el nombre del modelo a descargar: ").strip()
-            # Aquí podrías usar la API para pull, pero por simplicidad lo dejamos manual
-            print(f"Por favor, ejecute 'docker exec ollama ollama pull {model_name}' manualmente.")
-            return None
-        return None
-
-    print("Modelos disponibles en Ollama:")
-    for idx, model in enumerate(models, 1):
-        print(f"{idx}. {model}")
-    while True:
-        try:
-            choice = int(input("Seleccione un modelo por número: "))
-            if 1 <= choice <= len(models):
-                return models[choice - 1]
-            else:
-                print("Selección fuera de rango.")
-        except ValueError:
-            print("Entrada inválida. Introduzca un número.")
-
+    raise Exception("No se pudieron obtener los modelos de Ollama tras varios intentos.")
 
 def ensure_wordlist():
-    # Verificar si rockyou.txt existe, si no, instalarlo
+    """Asegura que rockyou.txt esté disponible."""
     wordlist_path = "/usr/share/wordlists/rockyou.txt"
     if not os.path.exists(wordlist_path):
-        print("rockyou.txt no encontrado. Instalando wordlists...")
-        os.system("apt-get update && apt-get install -y wordlists")
+        logger.info("rockyou.txt no encontrado. Instalando wordlists...")
+        subprocess.run(["apt-get", "update"], check=True)
+        subprocess.run(["apt-get", "install", "-y", "wordlists"], check=True)
         if os.path.exists("/usr/share/wordlists/rockyou.txt.gz"):
-            os.system("gunzip /usr/share/wordlists/rockyou.txt.gz")
+            subprocess.run(["gunzip", "/usr/share/wordlists/rockyou.txt.gz"], check=True)
         if not os.path.exists(wordlist_path):
-            print("Advertencia: rockyou.txt no disponible. Usando lista por defecto.")
-            wordlist_path = "/tmp/default_wordlist.txt"
+            logger.warning("rockyou.txt no disponible. Creando lista por defecto.")
+            wordlist_path = os.path.join(results_dir, "default_wordlist.txt")
             with open(wordlist_path, "w") as f:
                 f.write("password\nadmin\n123456\n")
     return wordlist_path
 
-
-# Verificación de herramientas en el PATH
 def check_tools_in_path():
-    required_tools = ["nmap", "msfconsole", "nikto", "hydra"]
-
+    """Verifica que las herramientas estén en el PATH."""
+    required_tools = ["nmap", "nikto", "hydra"]  # "msfconsole" cuando Metasploit esté listo
     for tool in required_tools:
         result = subprocess.run(["which", tool], capture_output=True, text=True)
         if not result.stdout:
-            logger.error(f"{tool} is not in your PATH. Please install or configure it.")
-            return False
-        logger.info(f"{tool} found in: {result.stdout.strip()}")
+            logger.error(f"{tool} no está en el PATH. Instálelo o configúrelo.")
+            raise Exception(f"{tool} no encontrado.")
+        logger.info(f"{tool} encontrado en: {result.stdout.strip()}")
     return True
 
-
-# Generar reporte final
-def generate_report(results: dict):
+def generate_report(results: dict, target: str):
+    """Genera un reporte final en JSON."""
     report = {
         "timestamp": datetime.datetime.now().isoformat(),
         "target": target,
         **results
     }
-    with open("pentest_report.json", "w") as f:
+    report_file = os.path.join(results_dir, "pentest_report.json")
+    with open(report_file, "w") as f:
         json.dump(report, f, indent=2)
-    logger.info("[+] Generated report: pentest_report.json")
+    logger.info(f"[+] Reporte generado: {report_file}")
 
-
-# Instalación de python-libnmap
-try:
-    from libnmap.parser import NmapParser
-except ImportError:
-    logger.error("python-libnmap is not installed. Installing...")
-    subprocess.run(["pip3", "install", "python-libnmap"])
-    from libnmap.parser import NmapParser
-
-# Uso del agente
-if __name__ == "__main__":
-    wait_for_ollama()
-    models = list_ollama_models()
-    selected_model = "llama3.2:1b"
-    if not any(selected_model in model for model in models):
-        print(
-            f"Modelo {selected_model} no encontrado. Descargue con 'docker exec ollama ollama pull {selected_model}'.")
-        exit(1)
-    print(f"Modelo seleccionado: {selected_model}")
-
-    # Asegurar que rockyou.txt esté disponible
-    wordlist_path = ensure_wordlist()
-    parser = argparse.ArgumentParser(description="Cybersecurity Agent based in Ollama for pentesting")
+def main():
+    # Parsear argumentos
+    parser = argparse.ArgumentParser(description="Cybersecurity Agent for pentesting with Ollama")
     parser.add_argument("--target", default=os.getenv("TARGET_HOST", "172.18.0.2"), help="Target IP or hostname")
     args = parser.parse_args()
     target = args.target.strip()
-    print(f"Target recibido: '{target}'")
-    print(f"Target en bytes: {repr(target)}")
+    logger.info(f"Target recibido: '{target}'")
 
     if not re.match(r'^[a-zA-Z0-9.-_:]+$', target):
-        print(f"Target '{target}' no pasa la validación de regex.")
+        logger.error(f"Target '{target}' no pasa la validación de regex.")
         raise ValueError("Invalid target format")
 
-    # Ejecutar NmapAgent debería generar un fichero nmap_result_raw.txt al que le pediría
-    # al LLM que lo parseara para generar bien un nmap_result.json o un formato más compacto.from
-    # Despues de dos días probandolo todo, llego a la conclusión que mi hardware y el llm cuantizado
-    # que me puedo permitir ejecutar en ollama, no puede realizar la tarea. Se inventa las cosas, tiene problemas
-    # con el tamaño del contexto, etc. He tratado incluso a procesar por partes, pero el LLM no tiene memoria, simplemente
-    # no recuerda el contexto anterior y al hacer los splits, corres el riesgo de romper la integridad estructural del
-    # json que quieres generar. Puede que con un LLM mejor entrenado, con mayor ventana de contexto pueda con la tarea.
-    # Con mis recursos locales simplemente no se puede hacer, o yo no he sido capaz de hacerlo.
+    # Esperar a Ollama
+    wait_for_ollama()
 
-    # La idea es instanciar un Agente agno que tenga adscritos las herramientas Nmap_Agent, Nikto_Agent y Metasploit_Agent,
-    # cada uno de ellos con ollama de ayudante para que dado la única entrada hardcodeada a Nmap en la que le pido que
-    # averigue las vulnerabilidades de una máquina target, Agno sea capaz de usar como lo haría un operador humano las
-    # distintas herramientas. En una primera fase me he encontrado que el LLM que cargo en Ollama, codellama, llama3.2:1b,
-    # llama3.2:7b simplemente no pueden ser usados en mi hardware, probablemente debido a la falta de una GPU y a la poca
-    # ram que le puedo dedicar corriendo los procesos en Docker Desktop sobre OSX 15.3.2 (24D81), 2,4 GHz Intel Core i9
-    # de 8 núcleos, Radeon Pro Vega 20 4 GB, Intel UHD Graphics 630 1536 MB, 32 GB 2400 MHz DDR4.
+    # Verificar modelos
+    models = list_ollama_models()
+    selected_model = "llama3.2:1b"
+    if not any(selected_model in model for model in models):
+        logger.error(f"Modelo {selected_model} no encontrado. Descargue con 'docker exec ollama ollama pull {selected_model}'.")
+        raise Exception(f"Modelo {selected_model} no disponible.")
 
+    # Asegurar wordlist
+    wordlist_path = ensure_wordlist()
 
-    # nmap_agent = NmapAgent()
-    # nmap_result = nmap_agent.run(target=target, ports=80)
-    # print(json.dumps(nmap_result, indent=2))
+    # Verificar herramientas
+    check_tools_in_path()
 
-    agent = NiktoAgent()
-    result = agent.run(json_file="nmap_result.json")
-    print(json.dumps(result, indent=2))
+    # Ejecutar pipeline
+    results = {}
+    json_file = os.path.join(results_dir, "nmap_result.json")
 
-    agent = HydraAgent()
-    result = agent.run(json_file="nmap_result.json")
-    print(json.dumps(result, indent=2))
+    # Nmap
+    logger.info(f"Ejecutando Nmap en {target} puerto 80...")
+    nmap_agent = NmapAgent()
+    nmap_result_raw = nmap_agent.run(target=target, ports="80")
+    if "error" in nmap_result_raw:
+        logger.error(f"Error en Nmap: {nmap_result_raw['error']}")
+        results["nmap"] = nmap_result_raw
+    else:
+        # Parsear el resultado crudo si está envuelto en "result"
+        if "result" in nmap_result_raw and isinstance(nmap_result_raw["result"], str):
+            try:
+                nmap_result = json.loads(nmap_result_raw["result"].strip())
+            except json.JSONDecodeError as e:
+                logger.error(f"Error al parsear el resultado de Nmap: {e}")
+                results["nmap"] = {"error": f"Error al parsear JSON: {e}"}
+                nmap_result = None
+        else:
+            nmap_result = nmap_result_raw
 
-    agent = MetasploitAgent()
-    result = agent.run(json_file="nmap_result.json")
-    print(json.dumps(result, indent=2))
+        if nmap_result:
+            with open(json_file, "w") as f:
+                json.dump(nmap_result, f, indent=2)
+            logger.info(f"Resultado de Nmap guardado en {json_file}")
+            results["nmap"] = nmap_result
+        print(json.dumps(nmap_result, indent=2))
 
-    # Mantener el contenedor vivo
-    print("Análisis inicial completado. Manteniendo el contenedor vivo...")
+    # Nikto
+    logger.info("Ejecutando Nikto...")
+    nikto_agent = NiktoAgent()
+    nikto_result = nikto_agent.run(json_file=json_file)
+    results["nikto"] = nikto_result
+    print(json.dumps(nikto_result, indent=2))
+
+    # Hydra
+    logger.info("Ejecutando Hydra...")
+    hydra_agent = HydraAgent()
+    hydra_result = hydra_agent.run(json_file=json_file)
+    results["hydra"] = hydra_result
+    print(json.dumps(hydra_result, indent=2))
+
+    # Metasploit (descomentado cuando esté listo)
+    # logger.info("Ejecutando Metasploit...")
+    # metasploit_agent = MetasploitAgent()
+    # metasploit_result = metasploit_agent.run(json_file=json_file)
+    # results["metasploit"] = metasploit_result
+    # print(json.dumps(metasploit_result, indent=2))
+
+    # Generar reporte
+    generate_report(results, target)
+
+    # Mantener contenedor vivo
+    logger.info("Análisis inicial completado. Manteniendo el contenedor vivo...")
     while True:
         time.sleep(60)
+
+if __name__ == "__main__":
+    main()
