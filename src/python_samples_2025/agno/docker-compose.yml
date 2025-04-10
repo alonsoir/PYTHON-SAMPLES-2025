@@ -10,9 +10,11 @@ services:
         condition: service_healthy
       vulnerable-app:
         condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - TARGET_HOST=172.18.0.2  # Para que NmapAgent apunte al contenedor vulnerable
+      - TARGET_HOST=172.18.0.2
     deploy:
       resources:
         limits:
@@ -29,7 +31,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./results:/results
     ports:
-      - "4444-4450:4444-4450"  # Rango para varios exploits
+      - "4444-4450:4444-4450"
 
   ollama:
     image: ollama/ollama:latest
@@ -45,7 +47,7 @@ services:
       - OLLAMA_NUM_PARALLEL=1
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_NUM_THREADS=2
-      - OLLAMA_CONTEXT_LENGTH=8192  # 4x default, ~8000 chars
+      - OLLAMA_CONTEXT_LENGTH=8192
     restart: unless-stopped
     entrypoint: ["/bin/sh", "-c"]
     command: "/ollama-entrypoint.sh"
@@ -58,8 +60,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "3"  # Reducido de 2 a 1.5
-          memory: "6g"  # Reducido de 4g a 3g
+          cpus: "2"
+          memory: "4g"
     networks:
       - sec-net
 
@@ -70,7 +72,7 @@ services:
     container_name: vulnerable-app
     restart: unless-stopped
     ports:
-      - "8080:80"  # Exponemos el puerto 80 del contenedor como 8080 en el host
+      - "8080:80"
     environment:
       - MYSQL_USER=root
       - MYSQL_PASSWORD=toor
@@ -78,14 +80,39 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"  # Muy ligero, solo necesita 0.5 CPU
-          memory: "512m"  # 512 MB es suficiente para DVWA
+          cpus: "0.5"
+          memory: "512m"
+    networks:
+      - sec-net
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: msf
+      POSTGRES_PASSWORD: msfpassword
+      POSTGRES_DB: msf
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U msf"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512m"
     networks:
       - sec-net
 
 volumes:
   ollama_models:
   ollama_logs:
+  postgres-data:
 
 networks:
   sec-net:

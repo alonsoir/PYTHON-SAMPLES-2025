@@ -87,7 +87,7 @@ def ensure_wordlist():
 
 def check_tools_in_path():
     """Verifica que las herramientas estén en el PATH."""
-    required_tools = ["nmap", "nikto", "hydra", "msfconsole","searchsploit"]
+    required_tools = ["nmap", "nikto", "hydra", "msfconsole","searchsploit", "sqlmap", "beef-xss", "php","nginx"]
     for tool in required_tools:
         result = subprocess.run(["which", tool], capture_output=True, text=True)
         if not result.stdout:
@@ -109,6 +109,21 @@ def generate_report(results: dict, target: str):
     logger.info(f"[+] Reporte generado: {report_file}")
 
 def main():
+    '''
+    En algun momento esto será una shell inicializada con un agente Agno, de manera que tenga inyectada todas las
+    herramientas a disposicion.
+
+    Ahora mismo hay un pipeline en el que se sigue un orden de ejecucion de herramientas, primero se inicializa un mapa
+    disponible de vulnerabilidades en msfdb, se ejecuta nmap buscando vulnerabilidades para sacar cosas como el SO, una
+    lista de vulnerabilidades, puertos abiertos, (revisar el módulo de Nmap, porque ahora de memoria creo que solo busco
+    el 80. debo sacar todos los puertos abiertos) para generar un fichero json que se pasa a las siguientes herramientas.
+
+    Se ha desarrollado en un principio con la aplicacion vulnerable-app en mente, pero
+    supongo que habrá que actualizarla con nuevas técnicas y otras aplicaciones vulnerables. La idea es poder tener una
+    shell en la que le preguntas mediante lenguaje natural para vulnerar una máquina con la que tenemos un contrato por
+    parte del cliente para poder ayudarle a cerrar las vulnerabilidades de dicha máquina, o de su red de máquinas.
+    :return:
+    '''
     # Parsear argumentos
     parser = argparse.ArgumentParser(description="Cybersecurity Agent for pentesting with Ollama")
     parser.add_argument("--target", default=os.getenv("TARGET_HOST", "172.18.0.2"), help="Target IP or hostname")

@@ -1,20 +1,12 @@
-FROM kalilinux/kali-rolling
+# Etapa 1: Compilar Python 3.10
+FROM kalilinux/kali-rolling AS python-builder
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Actualizar e instalar dependencias base
-RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y \
-    python3 \
-    python3-venv \
-    python3-dev \
-    python3-pip \
-    curl \
-    git \
+# Instalar dependencias necesarias para compilar Python
+RUN apt-get update && apt-get install -y \
     build-essential \
     libssl-dev \
     libffi-dev \
-    wget \
-    gnupg \
     zlib1g-dev \
     libncurses5-dev \
     libgdbm-dev \
@@ -22,6 +14,33 @@ RUN apt-get update && apt-get upgrade -y && \
     libreadline-dev \
     libsqlite3-dev \
     libbz2-dev \
+    wget \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Descargar y compilar Python 3.10 con 8 núcleos
+RUN wget https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz && \
+    tar -xf Python-3.10.16.tgz && \
+    cd Python-3.10.16 && \
+    ./configure --enable-optimizations --prefix=/usr/local && \
+    make -j 8 && \
+    make altinstall && \
+    cd .. && \
+    rm -rf Python-3.10.16 Python-3.10.16.tgz
+
+# Etapa 2: Imagen final con herramientas y configuraciones
+FROM kalilinux/kali-rolling
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Copiar Python compilado desde la etapa anterior
+COPY --from=python-builder /usr/local /usr/local
+RUN ln -sf /usr/local/bin/python3.10 /usr/bin/python3
+
+# Actualizar e instalar dependencias base
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y \
+    python3-pip \
+    curl \
+    git \
     nmap \
     nikto \
     hydra \
@@ -35,18 +54,12 @@ RUN apt-get update && apt-get upgrade -y && \
     docker.io \
     xsltproc \
     cron \
+    postgresql-client \
+    sqlmap \
+    beef-xss \
+    php \
+    nginx \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Instalar Python 3.10 desde fuente
-RUN wget https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz && \
-    tar -xf Python-3.10.16.tgz && \
-    cd Python-3.10.16 && \
-    ./configure --enable-optimizations && \
-    make -j $(nproc) && \
-    make altinstall && \
-    ln -sf /usr/local/bin/python3.10 /usr/bin/python3 && \
-    cd .. && \
-    rm -rf Python-3.10.16 Python-3.10.16.tgz
 
 # Instalar Poetry
 RUN curl -sSL https://install.python-poetry.org | /usr/local/bin/python3.10 - && \
@@ -74,8 +87,10 @@ COPY entrypoint.sh ./
 COPY custom_tools/nmap_to_json.xsl /usr/local/share/nmap_to_json.xsl
 COPY generate_exploit_mapping.py ./
 
-# Configurar el cron job para ejecutar generate_exploit_mapping.py cada minuto, por motivos de testing
-# despues, cambialo por 0 0 * * *
+# Crear el directorio /results para evitar errores durante la construcción
+RUN mkdir -p /results
+
+# Configurar el cron job para ejecutar generate_exploit_mapping.py cada minuto
 RUN echo "* * * * * /usr/local/bin/python3.10 /app/generate_exploit_mapping.py >> /results/cron.log 2>&1" > /etc/cron.d/exploit_mapping && \
     chmod 0644 /etc/cron.d/exploit_mapping && \
     crontab /etc/cron.d/exploit_mapping && \
@@ -85,8 +100,13 @@ RUN echo "* * * * * /usr/local/bin/python3.10 /app/generate_exploit_mapping.py >
 # Asegurarse de que el servicio de cron pueda ejecutarse
 RUN chmod 755 /etc/init.d/cron
 
+# Descomprimir rockyou.txt si existe
 RUN if [ -f /usr/share/wordlists/rockyou.txt.gz ]; then \
         gunzip /usr/share/wordlists/rockyou.txt.gz; \
     fi
 
+# Asegurar permisos de ejecución para el entrypoint
+RUN chmod +x /app/entrypoint.sh
+
+# Establecer el entrypoint
 ENTRYPOINT ["/bin/bash", "./entrypoint.sh"]
