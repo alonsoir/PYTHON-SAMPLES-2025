@@ -14,6 +14,8 @@ from custom_tools.metasploit_tool import MetasploitAgent
 from custom_tools.nmap_tool import NmapAgent
 from custom_tools.nikto_agent import NiktoAgent
 from custom_tools.Hydra_agent import HydraAgent
+from custom_tools.searchxploit_agent import SearchsploitAgent
+from generate_exploit_mapping import ExploitMappingGenerator
 
 # Configuración de logging
 logger.setLevel(logging.DEBUG)
@@ -178,12 +180,25 @@ def main():
     results["hydra"] = hydra_result
     print(json.dumps(hydra_result, indent=2))
 
-    # Metasploit (descomentado cuando esté listo)
+    # Generar el mapeo de exploits
+    logger.info("Generando mapeo de exploits...")
+    mapping_generator = ExploitMappingGenerator()
+    mapping_generator.run()
+    logger.info("Generado mapeo de exploits...")
+
     logger.info("Ejecutando Metasploit...")
     metasploit_agent = MetasploitAgent()
     metasploit_result = metasploit_agent.run(json_file=json_file)
     results["metasploit"] = metasploit_result
     print(json.dumps(metasploit_result, indent=2))
+
+
+
+    logger.info("Ejecutando SearchsploitAgent...")
+    searchsploitAgent = SearchsploitAgent()
+    searchxploit_result = searchsploitAgent.run(json_file=json_file)
+    results["searchxploit_result"] = searchxploit_result
+    print(json.dumps(searchxploit_result, indent=2))
 
     # Generar reporte
     generate_report(results, target)

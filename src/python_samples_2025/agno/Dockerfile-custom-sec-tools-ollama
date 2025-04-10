@@ -34,6 +34,7 @@ RUN apt-get update && apt-get upgrade -y && \
     iputils-ping \
     docker.io \
     xsltproc \
+    cron \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Instalar Python 3.10 desde fuente
@@ -71,6 +72,19 @@ COPY custom_tools/ ./custom_tools/
 COPY custom-sec-tools-ollama.py ./
 COPY entrypoint.sh ./
 COPY custom_tools/nmap_to_json.xsl /usr/local/share/nmap_to_json.xsl
+COPY generate_exploit_mapping.py ./
+
+# Configurar el cron job para ejecutar generate_exploit_mapping.py cada minuto, por motivos de testing
+# despues, cambialo por 0 0 * * *
+RUN echo "* * * * * /usr/local/bin/python3.10 /app/generate_exploit_mapping.py >> /results/cron.log 2>&1" > /etc/cron.d/exploit_mapping && \
+    chmod 0644 /etc/cron.d/exploit_mapping && \
+    crontab /etc/cron.d/exploit_mapping && \
+    touch /results/cron.log && \
+    chmod 666 /results/cron.log
+
+# Asegurarse de que el servicio de cron pueda ejecutarse
+RUN chmod 755 /etc/init.d/cron
+
 RUN if [ -f /usr/share/wordlists/rockyou.txt.gz ]; then \
         gunzip /usr/share/wordlists/rockyou.txt.gz; \
     fi
