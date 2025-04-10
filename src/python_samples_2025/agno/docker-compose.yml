@@ -28,6 +28,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./results:/results
+    ports:
+      - "4444-4450:4444-4450"  # Rango para varios exploits
 
   ollama:
     image: ollama/ollama:latest
@@ -62,7 +64,9 @@ services:
       - sec-net
 
   vulnerable-app:
-    image: vulnerables/web-dvwa:latest
+    build:
+      context: .
+      dockerfile: Dockerfile-dvwa
     container_name: vulnerable-app
     restart: unless-stopped
     ports:

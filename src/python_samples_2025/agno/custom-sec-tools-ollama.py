@@ -14,7 +14,6 @@ from custom_tools.metasploit_tool import MetasploitAgent
 from custom_tools.nmap_tool import NmapAgent
 from custom_tools.nikto_agent import NiktoAgent
 from custom_tools.Hydra_agent import HydraAgent
-# from custom_tools.metasploit_tool import MetasploitAgent  # Descomentado cuando esté listo
 
 # Configuración de logging
 logger.setLevel(logging.DEBUG)
@@ -64,6 +63,10 @@ def list_ollama_models(retries=5, delay=3):
             time.sleep(delay)
     raise Exception("No se pudieron obtener los modelos de Ollama tras varios intentos.")
 
+'''
+todo
+Necesito ésto? creo que ya lo tengo integrado en el contenedor custom-sec
+'''
 def ensure_wordlist():
     """Asegura que rockyou.txt esté disponible."""
     wordlist_path = "/usr/share/wordlists/rockyou.txt"
@@ -82,7 +85,7 @@ def ensure_wordlist():
 
 def check_tools_in_path():
     """Verifica que las herramientas estén en el PATH."""
-    required_tools = ["nmap", "nikto", "hydra"]  # "msfconsole" cuando Metasploit esté listo
+    required_tools = ["nmap", "nikto", "hydra", "msfconsole","searchsploit"]
     for tool in required_tools:
         result = subprocess.run(["which", tool], capture_output=True, text=True)
         if not result.stdout:
@@ -118,7 +121,7 @@ def main():
     # Esperar a Ollama
     wait_for_ollama()
 
-    # Verificar modelos
+    # Verificar modelos, probablemente no necesite listar los modelos y me quede con llama3.2:1b
     models = list_ollama_models()
     selected_model = "llama3.2:1b"
     if not any(selected_model in model for model in models):

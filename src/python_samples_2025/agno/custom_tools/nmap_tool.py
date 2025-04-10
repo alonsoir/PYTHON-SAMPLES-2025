@@ -30,7 +30,7 @@ class NmapAgent(Toolkit):
         try:
             logger.info(f"[+] Ejecutando Nmap en {target} puertos {ports} con detección de vulnerabilidades y OS...")
             command = [
-                "nmap", "-sV", "--script", "vuln", "-O",  # Añadir -O para detección de OS
+                "nmap", "-sV", "--script", "vuln", "-O",
                 "-p", ports, target,
                 "-oX", output_xml
             ]
@@ -59,30 +59,17 @@ class NmapAgent(Toolkit):
                 logger.error(f"[!] Error al parsear JSON de Nmap: {e}")
                 return {"error": f"Error al parsear JSON: {e}"}
 
-            # Extraer OS del resultado de Nmap
-            os_info = None
-            for host in nmap_data.get("nmaprun", {}).get("host", []):
-                os_section = host.get("os", {})
-                os_matches = os_section.get("osmatch", [])
-                if os_matches:
-                    os_info = os_matches[0].get("name", "unknown").lower()
-                    break
-
-            # Estructurar el resultado
+            # Usar directamente los datos del XSL, ajustando solo lo necesario
             result_dict = {
-                "target": {
-                    "ip": target,
-                    "port": ports,
-                    "service": nmap_data.get("service", "unknown"),
-                    "version": nmap_data.get("version", "unknown"),
-                    "os": os_info or "unknown"  # Añadir OS
-                },
-                "tools": {
-                    "nikto": [f"{target} {ports}"],
-                    "hydra": [f"{target} {ports} {nmap_data.get('service', 'unknown')}"],
-                    "metasploit": nmap_data.get("metasploit", {})
-                }
+                "target": nmap_data.get("target", {}),  # Conservar todo el target del XSL
+                "tools": nmap_data.get("tools", {})     # Conservar todas las herramientas
             }
+
+            # Asegurar que 'target' tenga todos los campos esperados
+            result_dict["target"]["ip"] = target
+            result_dict["target"]["port"] = ports
+            if "os" not in result_dict["target"]:
+                result_dict["target"]["os"] = "unknown"
 
             with open(json_file, "w") as f:
                 json.dump(result_dict, f, indent=2)
@@ -96,7 +83,6 @@ class NmapAgent(Toolkit):
         except Exception as e:
             logger.error(f"[!] Error inesperado en Nmap: {e}")
             return {"error": f"Error inesperado: {e}"}
-
 
 if __name__ == "__main__":
     agent = NmapAgent()

@@ -7,7 +7,13 @@
         "ip": "<xsl:value-of select="/nmaprun/host/address[@addrtype='ipv4']/@addr"/>",
         "port": "<xsl:value-of select="/nmaprun/host/ports/port/@portid"/>",
         "service": "<xsl:value-of select="/nmaprun/host/ports/port/service/@name"/>",
-        "version": "<xsl:value-of select="concat(/nmaprun/host/ports/port/service/@product, ' ', /nmaprun/host/ports/port/service/@version, ' ', /nmaprun/host/ports/port/service/@extrainfo)"/>"
+        "version": "<xsl:value-of select="concat(/nmaprun/host/ports/port/service/@product, ' ', /nmaprun/host/ports/port/service/@version, ' ', /nmaprun/host/ports/port/service/@extrainfo)"/>",
+        "os": "<xsl:choose>
+                 <xsl:when test="/nmaprun/host/os/osmatch/@name">
+                   <xsl:value-of select="/nmaprun/host/os/osmatch/@name"/>
+                 </xsl:when>
+                 <xsl:otherwise>unknown</xsl:otherwise>
+               </xsl:choose>"
       },
       "tools": {
         "nikto": ["<xsl:value-of select="concat(/nmaprun/host/address[@addrtype='ipv4']/@addr, ' ', /nmaprun/host/ports/port/@portid)"/>"],
