@@ -61,13 +61,10 @@ RUN apt-get update && apt-get upgrade -y && \
     nginx \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Instalar Poetry
-RUN curl -sSL https://install.python-poetry.org | /usr/local/bin/python3.10 - && \
+# Instalar Poetry con Python 3.10
+RUN curl -sSL https://install.python-poetry.org | /usr/local/bin/python3.10 - --version 1.8.3 && \
     ln -sf /root/.local/bin/poetry /usr/local/bin/poetry
 ENV PATH="/usr/local/bin:$PATH"
-
-# Configurar Poetry para no crear entornos virtuales
-RUN poetry config virtualenvs.create false
 
 # Establecer directorio de trabajo
 WORKDIR /app
@@ -75,10 +72,13 @@ WORKDIR /app
 # Asegurar permisos del directorio de trabajo
 RUN chmod -R 755 /app
 
-# Copiar archivos de dependencias e instalarlas
-COPY pyproject.toml poetry.lock* ./
-RUN poetry install --no-interaction --no-ansi --no-root
+# Copiar archivos de dependencias antes de configurar Poetry
+COPY pyproject.toml poetry.lock ./
 
+# Configurar Poetry para no crear entornos virtuales e instalar dependencias
+RUN poetry config virtualenvs.create false && \
+    poetry install --no-interaction --no-ansi --no-root --verbose && \
+    /usr/local/bin/python3.10 -c "import sys; print(sys.path); import requests; print('requests installed successfully')" || { echo "Failed to import requests"; exit 1; }
 # Copiar los directorios completos para mantener la estructura
 COPY custom_agents/ ./custom_agents/
 COPY custom_tools/ ./custom_tools/
@@ -91,11 +91,11 @@ COPY generate_exploit_mapping.py ./
 RUN mkdir -p /results
 
 # Configurar el cron job para ejecutar generate_exploit_mapping.py cada minuto
-RUN echo "* * * * * /usr/local/bin/python3.10 /app/generate_exploit_mapping.py >> /results/cron.log 2>&1" > /etc/cron.d/exploit_mapping && \
-    chmod 0644 /etc/cron.d/exploit_mapping && \
-    crontab /etc/cron.d/exploit_mapping && \
-    touch /results/cron.log && \
-    chmod 666 /results/cron.log
+# RUN echo "* * * * * /usr/local/bin/python3.10 /app/generate_exploit_mapping.py >> /results/cron.log 2>&1" > /etc/cron.d/exploit_mapping && \
+#     chmod 0644 /etc/cron.d/exploit_mapping && \
+#     crontab /etc/cron.d/exploit_mapping && \
+#     touch /results/cron.log && \
+#     chmod 666 /results/cron.log
 
 # Asegurarse de que el servicio de cron pueda ejecutarse
 RUN chmod 755 /etc/init.d/cron
