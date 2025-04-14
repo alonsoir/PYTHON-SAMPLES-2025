@@ -44,7 +44,6 @@ RUN apt-get update && apt-get upgrade -y && \
     nmap \
     nikto \
     hydra \
-    metasploit-framework \
     exploitdb \
     netcat-traditional \
     net-tools \
@@ -60,6 +59,24 @@ RUN apt-get update && apt-get upgrade -y && \
     php \
     nginx \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Instalar dependencias adicionales para gemas nativas
+RUN apt-get update && apt-get install -y \
+    libffi-dev \
+    libpq-dev \
+    libpcap-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Instalar Metasploit desde git (branch master)
+RUN git clone https://github.com/rapid7/metasploit-framework.git /tmp/metasploit-framework && \
+    cd /tmp/metasploit-framework && \
+    git checkout master && \
+    gem install bundler:2.5.10 && \
+    gem install domain_name -v 0.6.20240107 && \
+    gem install xmlrpc -v 0.3.3 && \
+    bundle config set --local without 'development test' && \
+    bundle install --no-cache && \
+    ln -sf /tmp/metasploit-framework/msfconsole /usr/bin/msfconsole
 
 # Instalar Poetry con Python 3.10
 RUN curl -sSL https://install.python-poetry.org | /usr/local/bin/python3.10 - --version 1.8.3 && \

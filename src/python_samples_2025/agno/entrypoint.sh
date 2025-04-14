@@ -16,9 +16,9 @@ if ! pgrep cron > /dev/null; then
 fi
 echo "Servicio de cron iniciado correctamente"
 
-echo "Ejecutando generate_exploit_mapping.py al inicio..."
-/usr/local/bin/python3.10 /app/generate_exploit_mapping.py || echo "Error al ejecutar generate_exploit_mapping.py, continuando..." >&2
-echo "generate_exploit_mapping.py ejecutado (con o sin errores)"
+# echo "Ejecutando generate_exploit_mapping.py al inicio..."
+# /usr/local/bin/python3.10 /app/generate_exploit_mapping.py || echo "Error al ejecutar generate_exploit_mapping.py, continuando..." >&2
+# echo "generate_exploit_mapping.py ejecutado (con o sin errores)"
 
 echo "Esperando a que Ollama esté listo..."
 until curl -s http://ollama:11434 >/dev/null; do

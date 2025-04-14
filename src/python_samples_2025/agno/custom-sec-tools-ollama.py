@@ -6,16 +6,16 @@ import os
 import re
 import subprocess
 import time
-import requests
 
+import requests
+from agno.agent import Agent
 from agno.utils.log import logger
+
 from custom_agents.ollama_agent import OLLAMA_HOST
-from custom_tools.metasploit_tool import MetasploitAgent
-from custom_tools.nmap_tool import NmapAgent
-from custom_tools.nikto_agent import NiktoAgent
 from custom_tools.Hydra_agent import HydraAgent
+from custom_tools.nikto_agent import NiktoAgent
+from custom_tools.nmap_tool import NmapAgent
 from custom_tools.searchxploit_agent import SearchsploitAgent
-from generate_exploit_mapping import ExploitMappingGenerator
 
 # Configuración de logging
 logger.setLevel(logging.DEBUG)
@@ -108,6 +108,76 @@ def generate_report(results: dict, target: str):
         json.dump(report, f, indent=2)
     logger.info(f"[+] Reporte generado: {report_file}")
 
+from agno.models.ollama import Ollama
+from agno.models.openai import OpenAIChat
+from ollama import Client as OllamaClient
+from agno.tools.reasoning import ReasoningTools
+
+def main_agno_openAI():
+    api_key=os.getenv("OPENAI_API_KEY")
+    agent = Agent(
+        model=OpenAIChat(api_key=api_key),
+        tools=[
+            ReasoningTools(), HydraAgent(), NiktoAgent(), NmapAgent(),
+        ],
+        instructions=[
+            "Perform an authorized pentesting analysis on the target 172.18.0.2:80 (HTTP, Linux 4.15 - 5.19).",
+            "Use NmapAgent to confirm open ports and services, NiktoAgent to scan for web vulnerabilities, "
+            "and SearchsploitAgent to find potential exploits.",
+            "Accept that SearchsploitAgent may mark exploits as 'unknown' due to missing Metasploit mappings.",
+            "Generate a report in Markdown with tables showing: ports and services, "
+            "web vulnerabilities, and potential exploits (including EDB-ID, title, and recommendations).",
+            "Assign a confidence score (0.5 for 'unknown' exploits, 0.9 for valid ones).",
+            "Handle errors gracefully, logging issues to /results/combined.log without stopping the analysis.",
+            "Include a note that the analysis was authorized by the client."
+        ],
+        markdown=True,
+    )
+    timestamp = datetime.datetime.now().isoformat()
+    report_file = f"/results/pentest_report_{timestamp}.md"
+    message=(f"Write a pentesting report for 172.18.0.2 based on Nmap, Nikto, and Searchsploit analysis, "
+             f"using /results/nmap_result.json as input.")
+    print(message)
+    agent.print_response(
+        message,
+        stream=True,
+        show_full_reasoning=True,
+        stream_intermediate_steps=True,
+        output_file=report_file
+    )
+    logger.info(f"Reporte generado: {report_file}")
+
+def main_agno():
+    agent = Agent(
+        model=Ollama(id="llama3.2:1b", client=OllamaClient()),
+        tools=[
+            ReasoningTools(), HydraAgent(),NiktoAgent(),NmapAgent(),
+        ],
+        instructions=[
+            "Perform an authorized pentesting analysis on the target 172.18.0.2:80 (HTTP, Linux 4.15 - 5.19).",
+            "Use NmapAgent to confirm open ports and services, NiktoAgent to scan for web vulnerabilities, "
+            "and SearchsploitAgent to find potential exploits.",
+            "Accept that SearchsploitAgent may mark exploits as 'unknown' due to missing Metasploit mappings.",
+            "Generate a report in Markdown with tables showing: ports and services, "
+            "web vulnerabilities, and potential exploits (including EDB-ID, title, and recommendations).",
+            "Assign a confidence score (0.5 for 'unknown' exploits, 0.9 for valid ones).",
+            "Handle errors gracefully, logging issues to /results/combined.log without stopping the analysis.",
+            "Include a note that the analysis was authorized by the client."
+        ],
+        markdown=True,
+    )
+    timestamp = datetime.datetime.now().isoformat()
+    report_file = f"/results/pentest_report_{timestamp}.md"
+    agent.print_response(
+        f"Write a pentesting report for 172.18.0.2 based on Nmap, Nikto, and Searchsploit analysis, using /results/nmap_result.json as input.",
+        stream=True,
+        show_full_reasoning=True,
+        stream_intermediate_steps=True,
+        output_file=report_file
+    )
+    logger.info(f"Reporte generado: {report_file}")
+
+
 def main():
     '''
     En algun momento esto será una shell inicializada con un agente Agno, de manera que tenga inyectada todas las
@@ -196,18 +266,18 @@ def main():
     print(json.dumps(hydra_result, indent=2))
 
     # Generar el mapeo de exploits
-    logger.info("Generando mapeo de exploits...")
-    mapping_generator = ExploitMappingGenerator()
-    mapping_generator.run()
-    logger.info("Generado mapeo de exploits...")
+    # logger.info("Generando mapeo de exploits...")
+    # mapping_generator = ExploitMappingGenerator()
+    # mapping_generator.run()
+    # logger.info("Generado mapeo de exploits...")
 
-    logger.info("Ejecutando Metasploit...")
-    metasploit_agent = MetasploitAgent()
-    metasploit_result = metasploit_agent.run(json_file=json_file)
-    results["metasploit"] = metasploit_result
-    print(json.dumps(metasploit_result, indent=2))
+    # logger.info("Ejecutando Metasploit...")
+    # metasploit_agent = MetasploitAgent()
+    # metasploit_result = metasploit_agent.run(json_file=json_file)
+    # results["metasploit"] = metasploit_result
+    # print(json.dumps(metasploit_result, indent=2))
 
-
+    logger.info("Módulo de Metasploit desactivado temporalmente")
 
     logger.info("Ejecutando SearchsploitAgent...")
     searchsploitAgent = SearchsploitAgent()
@@ -224,4 +294,6 @@ def main():
         time.sleep(60)
 
 if __name__ == "__main__":
-    main()
+    #main()
+    # main_agno()
+    main_agno_openAI()
